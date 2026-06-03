@@ -1,0 +1,35 @@
+{
+  "$schema_comment": "Hooks que automatizan la verificación de la sesión en Palm. El harness los ejecuta, no el agente, para asegurar calidad.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsc --noEmit --skipLibCheck",
+            "description": "Tras editar archivos, ejecuta el comprobador de tipos de TypeScript."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./init.sh > /tmp/harness_init.log 2>&1 && echo '[harness] init.sh OK' || (echo '[harness] init.sh FALLÓ — revisa /tmp/harness_init.log antes de cerrar' && cat /tmp/harness_init.log | tail -20)",
+            "description": "Antes de cerrar la sesión, fuerza una verificación completa del entorno."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(./init.sh)",
+      "Bash(npx tsc*)",
+      "Bash(npm run*)"
+    ]
+  }
+}

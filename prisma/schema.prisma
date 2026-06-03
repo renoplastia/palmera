@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Tenant {
+  id                  String               @id @default(cuid())
+  slug                String               @unique // E.g., "gastroshows"
+  name                String
+  domain              String?              @unique // E.g., "gastroshows.es" (custom domain support)
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  
+  // Relations
+  users               User[]
+  contacts            Contact[]
+  settings            Setting[]
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+  artworks            Artwork[]
+  consignments        Consignment[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  email        String
+  passwordHash String
+  role         UserRole @default(STAFF)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, email])
+  @@index([email])
+  @@index([tenantId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  token     String    @unique @default(uuid())
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([token])
+  @@index([tenantId, email])
+}
+
+model Contact {
+  id             String      @id @default(cuid())
+  tenantId       String
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String?
+  email          String?
+  contactType    ContactType @default(INDIVIDUAL)
+  companyName    String?
+  cif            String?     // NIF / CIF / DNI
+  billingStreet  String?
+  billingZip     String?
+  billingCity    String?
+  billingState   String?
+  billingCountry String?
+  notes          String?
+
+  // ==========================================
+  // MODOS RELATIONS & DYNAMIC FIELDS
+  // ==========================================
+  // Modo Creativo
+  isCollector    Boolean     @default(false)
+  collectorPrefs String?     // Preferencias estéticas de obras
+  artworksBought Artwork[]   @relation(name: "ArtworksBought")
+  consignments   Consignment[]
+
+  // Modo Restaurante & Hotel
+  allergies      String[]    // Alergias del comensal / comensales
+  favoriteTable  String?
+  passportNumber String?
+  loyaltyPoints  Int         @default(0)
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([tenantId, email])
+  @@index([createdAt])
+  @@index([contactType])
+}
+
+model Artwork {
+  id               String         @id @default(cuid())
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title            String
+  creationYear     Int
+  medium           String         // Ej: "Óleo sobre lienzo", "Escultura en bronce"
+  height           Float          // en cm
+  width            Float          // en cm
+  depth            Float?         // en cm (opcional para 3D)
+  weight           Float?         // en kg
+  status           ArtworkStatus  @default(AVAILABLE)
+  location         String         // Ubicación física actual (ej. "Estudio Principal")
+  price            Decimal        @db.Decimal(10, 2)
+  currency         String         @default("EUR")
+  images           String[]       // URLs de imágenes en Cloudflare R2
+  notes            String?
+  signatureStatus  String?        // Ej: "Firmado en el reverso", "Sin firmar"
+  
+  // Relaciones con el Core CRM
+  collectorId      String?        // Coleccionista que posee la obra (si está vendida)
+  collector        Contact?       @relation(name: "ArtworksBought", fields: [collectorId], references: [id])
+  
+  // Relaciones con Módulos de Arte
+  consignments     ConsignmentLine[]
+  certificate      Certificate?
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([collectorId])
+}
+
+model Consignment {
+  id               String            @id @default(cuid())
+  tenantId         String
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  galleryId        String            // El contacto en el Core que actúa como Galería (Company)
+  gallery          Contact           @relation(fields: [galleryId], references: [id])
+  startDate        DateTime          @default(now())
+  endDate          DateTime?         // Fecha límite de exposición/devolución
+  commissionRate   Float             @default(50.0) // Porcentaje que se queda la galería
+  status           ConsignmentStatus @default(ACTIVE)
+  notes            String?
+  lines            ConsignmentLine[]
+  
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([tenantId])
+  @@index([galleryId])
+  @@index([status])
+}
+
+model ConsignmentLine {
+  id            String      @id @default(cuid())
+  consignmentId String
+  consignment   Consignment @relation(fields: [consignmentId], references: [id], onDelete: Cascade)
+  artworkId     String
+  artwork       Artwork     @relation(fields: [artworkId], references: [id])
+  returnedAt    DateTime?   // Si la obra fue devuelta al estudio sin venderse
+  soldAt        DateTime?   // Si la obra fue vendida durante la consignación
+  salePrice     Decimal?    @db.Decimal(10, 2)
+
+  @@unique([consignmentId, artworkId])
+}
+
+model Certificate {
+  id               String    @id @default(cuid())
+  artworkId        String    @unique
+  artwork          Artwork   @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  verificationCode String    @unique // Hash/UUID para la URL pública del QR
+  issuedAt         DateTime  @default(now())
+  pdfUrl           String    // URL del PDF firmado en R2
+  
+  @@index([verificationCode])
+}
+
+model Setting {
+  tenantId  String
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+
+  @@id([tenantId, key])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String?
+  action    String
+  table     String
+  recordId  String
+  details   String?
+  ipAddress String?
+  userAgent String?
+  success   Boolean  @default(true)
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([table, createdAt])
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum ContactType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum ArtworkStatus {
+  AVAILABLE
+  CONSIGNED
+  RESERVED
+  SOLD
+  LOANED
+  DESTROYED
+}
+
+enum ConsignmentStatus {
+  ACTIVE
+  CLOSED
+  OVERDUE
+}
+
+enum ModeType {
+  RESTAURANTE
+  HOTEL
+  LOGISTICA
+  FINANZAS
+  CREATIVO
+  TECNOLOGICO
+  DIRECCION
+  GESTION_EQUIPO
+  VENTAS
+  ATENCION_CLIENTE
+  COMUNICACION
+  GESTION_PROYECTOS
+}

@@ -1,0 +1,41 @@
+import type { Metadata } from "next";
+import { Outfit, JetBrains_Mono } from "next/font/google";
+import "./globals.css";
+import WaterBackground from "@/components/WaterBackground";
+
+const outfit = Outfit({
+  variable: "--font-outfit",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+export const metadata: Metadata = {
+  title: "Palmera Core",
+  description: "Núcleo de ERP modular agnóstico e inteligente.",
+};
+
+import { SessionProvider } from "@/components/providers/SessionProvider";
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="es"
+      className={`${outfit.variable} ${jetbrainsMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col relative">
+        <WaterBackground />
+        <SessionProvider>{children}</SessionProvider>
+      </body>
+    </html>
+  );
+}

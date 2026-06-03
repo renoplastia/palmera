@@ -1,0 +1,101 @@
+{
+  "project": "palmera-core",
+  "description": "Núcleo de ERP modular agnóstico en Next.js, TypeScript y Tailwind CSS v4, diseñado para inyectar módulos dinámicos.",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "done", "blocked"]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "db_schema",
+      "title": "Inicialización de Prisma y Esquema Base",
+      "description": "Configura Prisma y define el esquema relacional básico agnóstico (User, Contact, Setting, AuditLog).",
+      "acceptance": [
+        "Existe `prisma/schema.prisma` con modelos de User, Contact (generalizado), Setting y AuditLog",
+        "Existe `src/lib/db.ts` inicializando el PrismaClient global singleton para Next.js",
+        "El comando `npx prisma generate` compila sin errores",
+        "El comando `npx prisma db push` o migraciones funcionan contra la base de datos"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "layout_shell",
+      "title": "Diseño del UI Shell Base",
+      "description": "Crea el Layout Administrativo con Sidebar (navegación dinámica según módulos activos) y TopBar (perfil e idioma).",
+      "acceptance": [
+        "Existe el componente `AdminLayout` en `src/components/admin/AdminLayout.tsx` o similar",
+        "El Sidebar lee dinámicamente el registro de módulos instalados en `Setting` para pintar los enlaces",
+        "Soporte para modo oscuro / claro premium y responsive (mobile-friendly)",
+        "Las subpáginas administrativas heredan este layout limpio"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "auth_next",
+      "title": "Autenticación Segura (NextAuth)",
+      "description": "Implementa la sesión de usuario, login, registro de usuarios e inicio seguro, integrando middleware de roles.",
+      "acceptance": [
+        "NextAuth configurado con proveedor de credenciales (email/password)",
+        "Rutas `/login` y `/register` completas y funcionales",
+        "Middleware de Next.js protegiendo rutas bajo `/admin` y restringiendo roles (ADMIN / STAFF)",
+        "Protección contra ataques comunes (SameSite=Strict, cookies seguras, etc.)"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "contact_crm",
+      "title": "CRM Central: Gestión de Contactos",
+      "description": "Crea la interfaz de administración de contactos (clientes, proveedores, leads) agnóstica para el ERP.",
+      "acceptance": [
+        "Rutas de API REST o Server Actions para CRUD de `Contact`",
+        "Vista en `/admin/contactos` que muestra la tabla de contactos",
+        "Buscador, paginación, filtros por Tipo de Contacto (Empresa / Particular) y etiquetas",
+        "Formulario interactivo para crear y editar contactos"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "name": "conversations",
+      "title": "Centro de Mensajería y Alertas (Conversations)",
+      "description": "Crea la bandeja centralizada de notificaciones, logs de correos y traza de actividad empresarial (AuditLog).",
+      "acceptance": [
+        "Modelos o tablas para registrar alertas y logs de mensajería",
+        "Vista en `/admin/conversaciones` para auditar la bandeja de correos/notificaciones del sistema",
+        "Buscador y filtros de actividad (ej. acciones críticas del sistema registradas en AuditLog)"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "name": "app_manager",
+      "title": "Gestor de Aplicaciones y Módulos (App Store)",
+      "description": "Crea el panel de Ajustes donde se pueden listar y habilitar/deshabilitar los módulos (ej. Reservas, Page Builder).",
+      "acceptance": [
+        "Un registro estático de módulos disponibles en el código (ej. `src/modules/registry.ts`)",
+        "Vista en `/admin/ajustes` que muestra las opciones globales del ERP",
+        "Sección 'Aplicaciones' que lista los módulos disponibles con tarjetas interactivas (Activar / Desactivar)",
+        "Modificar el estado de un módulo actualiza la tabla `Setting` y refresca el Sidebar dinámicamente"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 7,
+      "name": "saas_superadmin",
+      "title": "Consola Global de Gestión de Instancias (Superadmin)",
+      "description": "Consola administrativa global independiente para monitorizar clientes, gestionar estado de instancias, logs de auditoría cruzados y generar invitaciones.",
+      "acceptance": [
+        "Ruta `/superadmin` con interfaz premium y pestañas operativas",
+        "API `/api/superadmin/instances` y `/api/superadmin/invite` funcionales con mockups robustos",
+        "Generación y copiado de enlaces únicos de invitación que auto-completan `/register`",
+        "Historial persistente en localStorage/base de datos y filtros de búsqueda integrados"
+      ],
+      "status": "done"
+    }
+  ]
+}

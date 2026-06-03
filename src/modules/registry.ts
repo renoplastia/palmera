@@ -1,0 +1,178 @@
+import { PalmModule, PalmModeConfig } from "@/types/core";
+
+export const coreModules: PalmModule[] = [
+  {
+    id: "conversations",
+    name: "Conversaciones",
+    icon: "MessageSquare",
+    category: "General",
+    menuItems: [
+      { label: "Bandeja de Entrada", path: "/admin/conversations" },
+      { label: "Alertas de Auditoría", path: "/admin/conversations/audit" },
+    ],
+    requiredRole: "STAFF",
+  },
+  {
+    id: "settings",
+    name: "Ajustes",
+    icon: "Settings",
+    category: "Configuracion",
+    menuItems: [
+      { label: "General", path: "/admin/settings" },
+      { label: "Usuarios & Permisos", path: "/admin/settings/users" },
+      { label: "Gestión de modos", path: "/admin/settings/modules" },
+    ],
+    requiredRole: "ADMIN",
+  },
+];
+
+export const PalmModesRegistry: Record<string, PalmModeConfig> = {
+  CREATIVO: {
+    id: "CREATIVO",
+    name: "Creativo",
+    description: "Gestión de catálogo de obras artísticas, consignaciones, salas VIP y certificados de autenticidad.",
+    icon: "Palette",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Catálogo de Obras", path: "/admin/creative/artworks" },
+      { label: "Consignaciones", path: "/admin/creative/consignments" },
+      { label: "Salas Privadas VIP", path: "/admin/creative/private-rooms" },
+      { label: "Certificados QR", path: "/admin/creative/certificates" },
+    ],
+  },
+  RESTAURANTE: {
+    id: "RESTAURANTE",
+    name: "Restaurante",
+    description: "Gestión de mesas, comandas, reservas de comensales y escandallos/recetas.",
+    icon: "Utensils",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Mapa de Mesas", path: "/admin/restaurant/tables" },
+      { label: "Reservas", path: "/admin/restaurant/bookings" },
+      { label: "Escandallos / Menú", path: "/admin/restaurant/recipes" },
+      { label: "Punto de Venta (TPV)", path: "/admin/restaurant/pos" },
+    ],
+  },
+  HOTEL: {
+    id: "HOTEL",
+    name: "Hotel",
+    description: "Huéspedes, check-in, asignación de habitaciones y servicio de limpieza.",
+    icon: "Bed",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Planning de Habitaciones", path: "/admin/hotel/rooms" },
+      { label: "Check-in / Check-out", path: "/admin/hotel/front-desk" },
+      { label: "Servicio de Limpieza", path: "/admin/hotel/housekeeping" },
+    ],
+  },
+  LOGISTICA: {
+    id: "LOGISTICA",
+    name: "Logística",
+    description: "Control de stock de almacenes, envíos, albaranes y control de trazabilidad/lotes.",
+    icon: "Package",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Control de Stock", path: "/admin/logistics/inventory" },
+      { label: "Envíos & Courier", path: "/admin/logistics/shipments" },
+      { label: "Albaranes & Trazabilidad", path: "/admin/logistics/tracking" },
+    ],
+  },
+  FINANZAS: {
+    id: "FINANZAS",
+    name: "Finanzas",
+    description: "Contabilidad general, tesorería, conciliación bancaria y facturación reglamentaria.",
+    icon: "Wallet",
+    category: "Soporte",
+    menuItems: [
+      { label: "Contabilidad General", path: "/admin/finance/ledger" },
+      { label: "Conciliación Bancaria", path: "/admin/finance/reconciliation" },
+      { label: "Flujo de Caja", path: "/admin/finance/cashflow" },
+      { label: "Facturas de Venta", path: "/admin/finance/invoices" },
+    ],
+  },
+  TECNOLOGICO: {
+    id: "TECNOLOGICO",
+    name: "Tech",
+    description: "Gestión de proyectos (Sprints, tickets, incidencias) e integraciones de API/webhooks.",
+    icon: "Terminal",
+    category: "Soporte",
+    menuItems: [
+      { label: "Gestión de Sprints", path: "/admin/tech/sprints" },
+      { label: "API Keys & Integración", path: "/admin/tech/api-keys" },
+      { label: "Webhooks", path: "/admin/tech/webhooks" },
+    ],
+  },
+  DIRECCION: {
+    id: "DIRECCION",
+    name: "Dirección",
+    description: "Cuadros de mando analíticos, reporting cruzado multisede y objetivos OKRs corporativos.",
+    icon: "TrendingUp",
+    category: "Estrategia",
+    menuItems: [
+      { label: "Business Intelligence", path: "/admin/executive/bi" },
+      { label: "Reporting Financiero", path: "/admin/executive/reports" },
+      { label: "Objetivos (OKRs)", path: "/admin/executive/okrs" },
+    ],
+  },
+  GESTION_EQUIPO: {
+    id: "GESTION_EQUIPO",
+    name: "Gestión de equipo",
+    description: "Registro de jornada (fichajes), nóminas, organigrama y turnos de personal.",
+    icon: "Users2",
+    category: "Soporte",
+    menuItems: [
+      { label: "Control de Fichajes", path: "/admin/team/clocking" },
+      { label: "Nóminas & Contratos", path: "/admin/team/payroll" },
+      { label: "Organigrama & Turnos", path: "/admin/team/shifts" },
+    ],
+  },
+  VENTAS: {
+    id: "VENTAS",
+    name: "Ventas",
+    description: "Gestión de contactos, clientes y proveedores (CRM), embudo de ventas y oportunidades comerciales.",
+    icon: "DollarSign",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Dashboard de Ventas", path: "/admin/sales" },
+      { label: "Todos los Contactos", path: "/admin/contacts" },
+      { label: "Embudo de Ventas", path: "/admin/crm/pipeline" },
+      { label: "Oportunidades", path: "/admin/crm/opportunities" },
+    ],
+  },
+  ATENCION_CLIENTE: {
+    id: "ATENCION_CLIENTE",
+    name: "Atención al cliente",
+    description: "Centro de soporte, tickets de incidencias, bases de conocimiento y acuerdos de nivel de servicio (SLAs).",
+    icon: "Headphones",
+    category: "Soporte",
+    menuItems: [
+      { label: "Tickets Activos", path: "/admin/support/tickets" },
+      { label: "Base de Conocimiento", path: "/admin/support/knowledge" },
+      { label: "Métricas de SLA", path: "/admin/support/sla" },
+    ],
+  },
+  COMUNICACION: {
+    id: "COMUNICACION",
+    name: "Comunicación",
+    description: "Campañas de email marketing, alertas automatizadas, envíos de WhatsApp y mensajería omnicanal.",
+    icon: "MessageSquare",
+    category: "Soporte",
+    menuItems: [
+      { label: "Bandeja Omnicanal", path: "/admin/communication/inbox" },
+      { label: "Campañas de Email", path: "/admin/communication/campaigns" },
+      { label: "Plantillas de WhatsApp", path: "/admin/communication/whatsapp" },
+    ],
+  },
+  GESTION_PROYECTOS: {
+    id: "GESTION_PROYECTOS",
+    name: "Gestión de proyectos",
+    description: "Planificación de tareas, diagramas de Gantt, control de tiempos de ejecución y tableros Kanban.",
+    icon: "Briefcase",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Tablero Kanban", path: "/admin/projects/kanban" },
+      { label: "Diagrama de Gantt", path: "/admin/projects/gantt" },
+      { label: "Registro de Tiempos", path: "/admin/projects/timesheets" },
+    ],
+  },
+};
