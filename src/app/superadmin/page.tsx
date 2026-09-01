@@ -85,6 +85,31 @@ export default function SuperadminPage() {
   const [deleteTarget, setDeleteTarget] = useState<SuperadminTenant | null>(null);
   const [deletePhrase, setDeletePhrase] = useState("");
 
+  // Create Instance Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createData, setCreateData] = useState<{
+    name: string;
+    slug: string;
+    adminName: string;
+    adminEmail: string;
+    adminPassword: string;
+    domain: string;
+    timezone: string;
+    deploymentType: "SAAS" | "ON_PREMISE";
+    modes: string;
+  }>({
+    name: "",
+    slug: "",
+    adminName: "",
+    adminEmail: "",
+    adminPassword: "",
+    domain: "",
+    timezone: "Europe/Madrid",
+    deploymentType: "SAAS",
+    modes: "VENTAS,COMUNICACION,GESTION_PROYECTOS"
+  });
+  const [createLoading, setCreateLoading] = useState(false);
+
   // Search filters
   const [tenantSearch, setTenantSearch] = useState("");
   const [logSearch, setLogSearch] = useState("");
