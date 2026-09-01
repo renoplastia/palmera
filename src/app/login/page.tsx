@@ -4,7 +4,6 @@ import React, { useState, useEffect, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as Icons from "lucide-react";
-import WaterBackground from "@/components/WaterBackground";
 
 function LoginForm() {
   const router = useRouter();

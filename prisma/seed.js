@@ -11,76 +11,66 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('Starting seed...');
+  const tenantSlug = process.env.PALMERA_INSTANCE_SLUG || 'gastroshows';
+  const companyName = process.env.PALMERA_INSTANCE_NAME || 'Gastroshows S.L.';
+  const domain = process.env.PALMERA_INSTANCE_DOMAIN || `${tenantSlug}.palmera.io`;
+  const adminName = process.env.PALMERA_INSTANCE_ADMIN_NAME || 'Renato García';
+  const adminEmail = (process.env.PALMERA_INSTANCE_ADMIN_EMAIL || 'admin@gastroshows.es').toLowerCase();
+  const adminPassword = process.env.PALMERA_INSTANCE_ADMIN_PASSWORD || 'gastroshows123';
+  const activeModes = (process.env.PALMERA_INSTANCE_MODES || 'RESTAURANTE,GESTION_EQUIPO,DIRECCION')
+    .split(',')
+    .map((mode) => mode.trim())
+    .filter(Boolean);
   
-  // 1. Create Tenant "gastroshows"
+  // 1. Create Tenant for the selected instance
   const tenant = await prisma.tenant.upsert({
-    where: { slug: 'gastroshows' },
-    update: {},
+    where: { slug: tenantSlug },
+    update: {
+      name: companyName,
+      domain,
+      isActive: true,
+    },
     create: {
-      slug: 'gastroshows',
-      name: 'Gastroshows S.L.',
-      domain: 'gastroshows.es',
+      slug: tenantSlug,
+      name: companyName,
+      domain,
       isActive: true,
     },
   });
-  console.log('Tenant gastroshows upserted:', tenant.id);
+  console.log('Tenant upserted:', tenant.slug, tenant.id);
 
   // 2. Create Admin user for this tenant
-  const passwordHash = await bcrypt.hash('gastroshows123', 10);
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
   const user = await prisma.user.upsert({
     where: {
       tenantId_email: {
         tenantId: tenant.id,
-        email: 'admin@gastroshows.es',
+        email: adminEmail,
       },
     },
     update: {
       passwordHash: passwordHash,
-      name: 'Renato García',
+      name: adminName,
       role: 'ADMIN',
     },
     create: {
       tenantId: tenant.id,
-      name: 'Renato García',
-      email: 'admin@gastroshows.es',
+      name: adminName,
+      email: adminEmail,
       passwordHash: passwordHash,
       role: 'ADMIN',
     },
   });
   console.log('Admin user upserted:', user.email);
 
-  // 2b. Create second Tech Admin user for this tenant
-  const techPasswordHash = await bcrypt.hash('G4STR0SH0WSb4rc3l0n42018', 10);
-  const techUser = await prisma.user.upsert({
-    where: {
-      tenantId_email: {
-        tenantId: tenant.id,
-        email: 'tech@gastroshows.es',
-      },
-    },
-    update: {
-      passwordHash: techPasswordHash,
-      name: 'Tech Admin',
-      role: 'ADMIN',
-    },
-    create: {
-      tenantId: tenant.id,
-      name: 'Tech Admin',
-      email: 'tech@gastroshows.es',
-      passwordHash: techPasswordHash,
-      role: 'ADMIN',
-    },
-  });
-  console.log('Tech admin user upserted:', techUser.email);
-
   // 3. Create Tenant Settings
   const settings = [
-    { key: 'company_name', value: 'Gastroshows S.L.' },
-    { key: 'company_email', value: 'info@gastroshows.es' },
-    { key: 'company_phone', value: '+34 932 456 789' },
+    { key: 'company_name', value: companyName },
+    { key: 'company_email', value: adminEmail },
     { key: 'company_timezone', value: 'Europe/Madrid' },
     { key: 'maintenance_mode', value: 'false' },
-    { key: 'palm_active_modes', value: JSON.stringify(['RESTAURANTE', 'GESTION_EQUIPO', 'DIRECCION']) },
+    { key: 'palmera_active_modes', value: JSON.stringify(activeModes) },
+    { key: 'data_transfer_policy', value: JSON.stringify({ default: 'deny', requiresExplicitApiGrant: true }) },
   ];
 
   for (const setting of settings) {

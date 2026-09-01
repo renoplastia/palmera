@@ -12,21 +12,8 @@
         "name": "Renato García",
         "email": "admin@gastroshows.es",
         "role": "ADMIN",
-        "createdAt": "2026-05-04T10:29:15.750Z"
-      },
-      {
-        "id": "u2b",
-        "name": "Tech Admin",
-        "email": "tech@gastroshows.es",
-        "role": "ADMIN",
-        "createdAt": "2026-05-18T10:29:15.750Z"
-      },
-      {
-        "id": "u3",
-        "name": "Silvia Fernández",
-        "email": "silvia@gastroshows.es",
-        "role": "STAFF",
-        "createdAt": "2026-05-14T10:29:15.750Z"
+        "createdAt": "2026-05-04T10:29:15.750Z",
+        "password": "Bf*Q)HL85fk)|2rK"
       }
     ]
   },
@@ -35,25 +22,9 @@
     "slug": "sport2live",
     "name": "Sport2Live Club",
     "domain": "sport2live.com",
-    "isActive": true,
+    "isActive": false,
     "createdAt": "2026-05-07T10:29:15.750Z",
-    "users": [
-      {
-        "id": "u4",
-        "name": "Alex Ruiz",
-        "email": "alex@sport2live.com",
-        "role": "ADMIN",
-        "createdAt": "2026-05-07T10:29:15.750Z"
-      },
-      {
-        "id": "usr-1779187760383",
-        "name": "Jesus",
-        "email": "jesus@sport2live.com",
-        "role": "STAFF",
-        "createdAt": "2026-05-19T10:49:20.383Z",
-        "password": "admin1234"
-      }
-    ]
+    "users": []
   },
   {
     "id": "t3",

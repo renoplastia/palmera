@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import db from "@/lib/db";
 import { getMockTenants, saveMockTenants } from "@/lib/mockDb";
+import { ProvisioningService } from "@/lib/provisioning";
+
+const provisioningService = new ProvisioningService();
 
 export async function GET() {
   try {
@@ -14,6 +17,12 @@ export async function GET() {
             email: true,
             role: true,
             createdAt: true,
+          },
+        },
+        settings: {
+          select: {
+            key: true,
+            value: true,
           },
         },
       },
@@ -88,6 +97,29 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    
+    // Si el body contiene 'deploymentType', tratamos esto como una creación de nueva instancia
+    if (body.deploymentType) {
+      const result = await provisioningService.provision({
+        slug: body.slug,
+        name: body.name,
+        adminEmail: body.adminEmail,
+        adminName: body.adminName,
+        adminPassword: body.adminPassword,
+        domain: body.domain,
+        timezone: body.timezone,
+        modes: body.modes,
+        deploymentType: body.deploymentType,
+      });
+
+      if (!result.success) {
+        return NextResponse.json({ success: false, error: "Provisioning failed" }, { status: 500 });
+      }
+
+      return NextResponse.json(result);
+    }
+
+    // Fallback al comportamiento anterior: Sincronización masiva de tenants (Mock DB)
     const { tenants } = body;
 
     if (!Array.isArray(tenants)) {
@@ -114,5 +146,82 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { tenantId, name, domain, isActive, maintenanceMode } = body;
+
+    if (!tenantId || typeof tenantId !== "string") {
+      return NextResponse.json({ success: false, error: "Missing tenantId" }, { status: 400 });
+    }
+
+    const mockTenants = getMockTenants();
+    const updatedMockTenants = mockTenants.map((tenant) => {
+      if (tenant.id !== tenantId) return tenant;
+      return {
+        ...tenant,
+        name: typeof name === "string" ? name : tenant.name,
+        domain: typeof domain === "string" ? domain : tenant.domain,
+        isActive: typeof isActive === "boolean" ? isActive : tenant.isActive,
+      };
+    });
+    saveMockTenants(updatedMockTenants);
+
+    try {
+      const tenant = await db.tenant.update({
+        where: { id: tenantId },
+        data: {
+          ...(typeof name === "string" ? { name } : {}),
+          ...(typeof domain === "string" ? { domain: domain || null } : {}),
+          ...(typeof isActive === "boolean" ? { isActive } : {}),
+        },
+      });
+
+      if (typeof maintenanceMode === "boolean") {
+        await db.setting.upsert({
+          where: { tenantId_key: { tenantId, key: "maintenance_mode" } },
+          update: { value: String(maintenanceMode) },
+          create: { tenantId, key: "maintenance_mode", value: String(maintenanceMode) },
+        });
+      }
+
+      return NextResponse.json({ success: true, tenant });
+    } catch (error) {
+      console.warn("Could not patch tenant in Prisma, fallback mock db used.", error);
+      return NextResponse.json({ success: true, source: "mock" });
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const tenantId = url.searchParams.get("tenantId");
+
+    if (!tenantId) {
+      return NextResponse.json({ success: false, error: "Missing tenantId" }, { status: 400 });
+    }
+
+    const mockTenants = getMockTenants();
+    saveMockTenants(mockTenants.filter((tenant) => tenant.id !== tenantId));
+
+    try {
+      await db.tenant.delete({
+        where: { id: tenantId },
+      });
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.warn("Could not delete tenant in Prisma, fallback mock db used.", error);
+      return NextResponse.json({ success: true, source: "mock" });
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

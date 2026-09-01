@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     // 2. Create the tenant, default settings, and admin user in a single transaction
     const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-    const result = await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx: any) => {
       // Create Tenant
       const tenant = await tx.tenant.create({
         data: {

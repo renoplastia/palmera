@@ -2,9 +2,38 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+const PLATFORM_SUBDOMAINS = new Set(["app", "platform", "superadmin", "www"]);
+
+function getHostnameParts(hostHeader: string): string[] {
+  return hostHeader.split(":")[0]?.split(".").filter(Boolean) ?? [];
+}
+
+function getPlatformUrl(req: NextRequest, pathname: string): URL {
+  if (process.env.PALMERA_PLATFORM_URL) {
+    return new URL(pathname, process.env.PALMERA_PLATFORM_URL);
+  }
+
+  const url = new URL(pathname, req.url);
+  const host = req.headers.get("host") || "";
+  const parts = getHostnameParts(host);
+
+  if (host.includes("localhost") || host.includes("127.0.0.1")) {
+    url.hostname = "localhost";
+    return url;
+  }
+
+  if (parts.length > 2) {
+    url.hostname = parts.slice(1).join(".");
+  }
+
+  return url;
+}
+
 export async function middleware(req: NextRequest) {
   const url = req.nextUrl.clone();
   const hostname = req.headers.get("host") || "";
+  const hostnameParts = getHostnameParts(hostname);
+  const firstHostPart = hostnameParts[0] ?? "";
 
   // 1. Resolve Tenant Slug from Subdomain
   const isLocalhost = hostname.includes("localhost") || hostname.includes("127.0.0.1");
@@ -14,19 +43,17 @@ export async function middleware(req: NextRequest) {
 
   if (isLocalhost) {
     // If it's like gastroshows.localhost:3000
-    const parts = hostname.split(".");
-    if (parts.length > 1 && parts[0] !== "localhost" && parts[0] !== "www") {
-      tenantSlug = parts[0];
+    if (hostnameParts.length > 1 && firstHostPart !== "localhost" && !PLATFORM_SUBDOMAINS.has(firstHostPart)) {
+      tenantSlug = firstHostPart;
     } else {
       // localhost:3000 without subdomain → Platform management portal
       isPlatformRoute = true;
     }
   } else {
     // Production domain parsing
-    const parts = hostname.split(".");
     // If it is gastroshows.palmera.io, parts would be ['gastroshows', 'palm-erp', 'com']
-    if (parts.length > 2 && parts[0] !== "www") {
-      tenantSlug = parts[0];
+    if (hostnameParts.length > 2 && !PLATFORM_SUBDOMAINS.has(firstHostPart)) {
+      tenantSlug = firstHostPart;
     } else {
       // Base domain (palmera.io) → Platform management portal
       isPlatformRoute = true;
@@ -66,8 +93,7 @@ export async function middleware(req: NextRequest) {
 
   // Block tenant access to superadmin console
   if (isSuperadminRoute) {
-    const adminUrl = new URL("/admin", req.url);
-    return NextResponse.redirect(adminUrl);
+    return NextResponse.redirect(getPlatformUrl(req, url.pathname));
   }
 
   if (isAdminRoute) {

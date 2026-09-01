@@ -87,6 +87,40 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Slightly condense only prominent bold text. Small labels and regular copy stay unchanged. */
+:where(
+  .font-bold.text-base,
+  .font-bold.text-lg,
+  .font-bold.text-xl,
+  .font-bold.text-2xl,
+  .font-bold.text-3xl,
+  .font-bold.text-4xl,
+  .font-bold.text-5xl,
+  .font-bold.text-6xl,
+  .font-bold.text-7xl,
+  .font-extrabold.text-base,
+  .font-extrabold.text-lg,
+  .font-extrabold.text-xl,
+  .font-extrabold.text-2xl,
+  .font-extrabold.text-3xl,
+  .font-extrabold.text-4xl,
+  .font-extrabold.text-5xl,
+  .font-extrabold.text-6xl,
+  .font-extrabold.text-7xl,
+  .font-black.text-base,
+  .font-black.text-lg,
+  .font-black.text-xl,
+  .font-black.text-2xl,
+  .font-black.text-3xl,
+  .font-black.text-4xl,
+  .font-black.text-5xl,
+  .font-black.text-6xl,
+  .font-black.text-7xl
+) {
+  font-stretch: 95%;
+  font-variation-settings: "wdth" 95;
+}
+
 /* Premium Metallic Orange Gradient with internal polished reflection */
 .bg-metallic-orange {
   background: linear-gradient(135deg, #f59e0b 0%, #f97316 45%, #ea580c 75%, #b45309 100%);

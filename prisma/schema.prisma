@@ -20,6 +20,8 @@ model Tenant {
   contacts            Contact[]
   settings            Setting[]
   auditLogs           AuditLog[]
+  apiTransferGrants   ApiTransferGrant[]
+  apiTransferLogs     ApiTransferLog[]
   passwordResetTokens PasswordResetToken[]
   artworks            Artwork[]
   consignments        Consignment[]
@@ -207,6 +209,46 @@ model AuditLog {
   @@index([table, createdAt])
 }
 
+model ApiTransferGrant {
+  id          String                @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  direction   DataTransferDirection
+  peerSlug    String
+  peerDomain  String?
+  resource    String
+  isEnabled   Boolean               @default(false)
+  expiresAt   DateTime?
+  createdBy   String?
+  notes       String?
+  lastUsedAt  DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([tenantId, direction, peerSlug, resource])
+  @@index([tenantId, isEnabled])
+  @@index([peerSlug, resource])
+}
+
+model ApiTransferLog {
+  id          String                @id @default(cuid())
+  tenantId    String
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grantId     String?
+  direction   DataTransferDirection
+  peerSlug    String
+  resource    String
+  operation   String
+  recordCount Int                   @default(0)
+  success     Boolean               @default(true)
+  error       String?
+  createdAt   DateTime              @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([grantId])
+  @@index([peerSlug, resource])
+}
+
 enum UserRole {
   ADMIN
   STAFF
@@ -245,4 +287,10 @@ enum ModeType {
   ATENCION_CLIENTE
   COMUNICACION
   GESTION_PROYECTOS
+}
+
+enum DataTransferDirection {
+  INBOUND
+  OUTBOUND
+  BIDIRECTIONAL
 }

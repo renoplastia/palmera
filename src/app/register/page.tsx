@@ -3,7 +3,6 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import * as Icons from "lucide-react";
-import WaterBackground from "@/components/WaterBackground";
 
 function RegisterForm() {
   const searchParams = useSearchParams();

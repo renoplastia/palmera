@@ -305,3 +305,36 @@
    - Importado y renderizado el componente de embudo bajo la pestaña `"funnel"`.
 
 **Estado:** Embudo de Ventas y analítica predictiva completados con éxito y verificado sin errores TypeScript.
+
+---
+
+## [2026-08-31] Módulo de Compras Inteligentes Predictivas & Suite de Dirección de Restaurante
+
+**Objetivo:** Desarrollar el módulo de **Compras Inteligentes (`COMPRAS_INTELIGENTES`)** centrado en la proyección predictiva de pedidos por velocidad de consumo y cadencia histórica, ampliar el **Planificador de Turnos y Vacaciones (`GESTION_EQUIPO`)**, y crear la **Suite de Dirección de Restaurante** (Mermas, Sanidad HACCP y Cierre de Servicio).
+
+### Cambios Realizados
+1. **Módulo de Compras Inteligentes (`src/modules/purchasing/`)**:
+   - `PurchasingDashboard.tsx`: Panel con 4 pestañas operativas:
+     - **Sugerencias de Compra IA (Motor Predictivo)**: Calcula días de stock restante, cadencia media de reposición y punto de pedido automático para materias primas, bebidas, químicos de limpieza, menaje y embalaje.
+     - **Generador de Pedidos a Proveedor**: Agrupa necesidades por proveedor con botón de despacho en 1 clic por WhatsApp Web / Email.
+     - **Auditoría de Albaranes**: Detecta subidas de precio no pactadas en facturas de proveedores.
+     - **Catálogo de Productos**: Gestión de Lead Times y unidades de empaquetado.
+   - Descriptor `module.ts` y ruta `/admin/purchasing`.
+2. **Ampliación de Gestión de Equipo (`src/modules/team/`)**:
+   - `ShiftPlannerTab.tsx`: Cuadrante semanal de turnos por empleado y rol (*Cocina, Sala, Barra, Limpieza*), cálculo de masa salarial y **ratio de Labor Cost %** vs venta prevista.
+   - `VacationRequestsTab.tsx`: Flujo de solicitud de vacaciones con detector automático de solapamientos entre puestos clave.
+   - Rutas `/admin/team/shifts` y `/admin/team/clocking`.
+3. **Suite de Dirección de Restaurante (`src/modules/restaurant_ops/`)**:
+   - `WasteTrackerTab.tsx`: Control de mermas y desperdicios con cálculo de impacto monetario directo en margen.
+   - `HaccpComplianceTab.tsx`: Registro digital sanitario HACCP para temperaturas de cámaras frigoríficas y congeladores.
+   - `DailyShiftReportTab.tsx`: Diario de cierre de turno del director con cuadre de ventas, comensales, ticket medio e incidencias.
+   - Rutas `/admin/restaurant/waste`, `/admin/restaurant/haccp` y `/admin/restaurant/daily-report`.
+4. **Registro Global (`src/modules/registry.ts` & `AdminSidebar.tsx`)**:
+   - Incorporados los módulos al registro de sectores y configurados como activos por defecto en el menú lateral.
+5. **Verificación de Entorno**:
+   - TypeScript `npx tsc --noEmit` pasado al 100% con 0 errores.
+   - Next.js `npm run build` compilando exitosamente las 28 rutas estáticas y dinámicas.
+   - Script `./init.sh` aprobado con éxito.
+
+**Estado:** Módulo de Compras Inteligentes, Gestión de Equipo y Herramientas de Dirección de Restaurante completados y validados.
+

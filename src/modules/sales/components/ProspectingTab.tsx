@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
+import { isTenantDataCleared } from "@/lib/demoDataCleanup";
 
 interface Lead {
   id: string;
@@ -79,6 +80,10 @@ export default function ProspectingTab() {
   useEffect(() => {
     const slug = getSlug();
     const storageKey = `palmera_sales_leads_${slug}`;
+    if (isTenantDataCleared(slug)) {
+      setLeads([]);
+      return;
+    }
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {

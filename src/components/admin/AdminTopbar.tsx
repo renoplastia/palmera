@@ -3,14 +3,22 @@
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import * as Icons from "lucide-react";
+import SmartSearchInput from "@/components/SmartSearchInput";
+import { coreModules, PalmModesRegistry } from "@/modules/registry";
 
 interface AdminTopbarProps {
   onMenuClick: () => void;
+  isMenuOpen: boolean;
 }
 
-export default function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
+export default function AdminTopbar({ onMenuClick, isMenuOpen }: AdminTopbarProps) {
   const pathname = usePathname();
   const [isDark, setIsDark] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const searchSuggestions = [
+    ...coreModules.flatMap((module) => [module.name, ...module.menuItems.map((item) => item.label)]),
+    ...Object.values(PalmModesRegistry).flatMap((module) => [module.name, ...module.menuItems.map((item) => item.label)]),
+  ];
 
   // Initialize theme from HTML class list
   useEffect(() => {
@@ -46,13 +54,14 @@ export default function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/40 bg-background/80 px-6 backdrop-blur-md">
       {/* Left side: Hamburger (Mobile) & Title */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden"
-          aria-label="Toggle Menu"
+          className="rounded-xl border border-border/50 bg-card/60 p-2 text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+          aria-label={isMenuOpen ? "Cerrar menú" : "Abrir menú"}
+          aria-expanded={isMenuOpen}
         >
-          <Icons.Menu className="h-5 w-5" />
+          {isMenuOpen ? <Icons.X className="h-5 w-5" /> : <Icons.Menu className="h-5 w-5" />}
         </button>
 
         <div>
@@ -70,14 +79,7 @@ export default function AdminTopbar({ onMenuClick }: AdminTopbarProps) {
       {/* Right side: Global Actions (Search, Dark Mode, Profile) */}
       <div className="flex items-center gap-3">
         {/* Search Bar - hidden on mobile */}
-        <div className="relative hidden w-64 md:block">
-          <Icons.Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
-          <input
-            type="search"
-            placeholder="Buscar transacciones, contactos..."
-            className="w-full rounded-lg border border-border/50 bg-muted/30 py-1.5 pr-3 pl-9 text-xs text-foreground placeholder-muted-foreground outline-hidden transition-all duration-200 focus:border-amber-500/50 focus:bg-background focus:ring-1 focus:ring-amber-500/50"
-          />
-        </div>
+        <SmartSearchInput value={globalSearch} onChange={setGlobalSearch} suggestions={searchSuggestions} placeholder="Buscar en Palmera..." className="hidden w-64 md:block" />
 
         {/* Theme Switcher Button */}
         <button

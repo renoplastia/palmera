@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { getTenantStorageKey } from "@/lib/clientStorage";
+import SmartSearchInput from "@/components/SmartSearchInput";
 
 interface Contact {
   id: string;
@@ -233,16 +234,7 @@ export default function ContactsTab() {
         </div>
 
         {/* Search */}
-        <div className="relative">
-          <Icons.Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar contacto..."
-            className="w-full rounded-lg border border-border/50 bg-background py-1.5 pr-3 pl-9 text-xs text-foreground outline-hidden focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50"
-          />
-        </div>
+        <SmartSearchInput value={searchQuery} onChange={setSearchQuery} suggestions={contacts.flatMap((contact) => [contact.name, contact.email, contact.companyName ?? ""])} placeholder="Buscar contacto..." />
 
         {/* Contacts Grid */}
         <div className="grid gap-3 sm:grid-cols-2 max-h-[500px] overflow-y-auto pr-1">

@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import { getTenantStorageKey, getTenantSlugClient } from "@/lib/clientStorage";
+import { isTenantDataCleared } from "@/lib/demoDataCleanup";
 import EditableLabel from "@/components/admin/EditableLabel";
+import SmartSearchInput from "@/components/SmartSearchInput";
 
 // 1. Interfaces & Demo Data
 interface Contact {
@@ -238,6 +240,10 @@ export default function ContactsPage() {
       }
 
       const storageKey = `palmera_contacts_${slug}`;
+      if (isTenantDataCleared(slug)) {
+        setContacts([]);
+        return;
+      }
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         try {
@@ -735,16 +741,7 @@ export default function ContactsPage() {
       {/* Odoo Filters Board */}
       <div className="grid gap-3 md:grid-cols-4 bg-muted/20 border border-border/40 p-4 rounded-xl">
         {/* Search */}
-        <div className="relative md:col-span-2">
-          <Icons.Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por Nombre, Email, CIF, Ciudad..."
-            className="w-full rounded-lg border border-border/50 bg-background py-1.5 pr-3 pl-9 text-xs text-foreground placeholder-muted-foreground outline-hidden focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50"
-          />
-        </div>
+        <SmartSearchInput value={searchQuery} onChange={setSearchQuery} suggestions={contacts.flatMap((contact) => [contact.name, contact.email, contact.cif ?? "", contact.billingCity ?? ""])} placeholder="Buscar por Nombre, Email, CIF, Ciudad..." className="md:col-span-2" />
 
         {/* Filters Selectors */}
         <div className="flex gap-2">

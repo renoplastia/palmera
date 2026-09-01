@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
+import { isTenantDataCleared } from "@/lib/demoDataCleanup";
 
 interface Lead {
   id: string;
@@ -117,6 +118,11 @@ export default function FunnelTab() {
 
   const loadData = () => {
     const slug = getSlug();
+    if (isTenantDataCleared(slug)) {
+      setLeads([]);
+      setOpportunities([]);
+      return;
+    }
     
     // Load leads
     const leadsKey = `palmera_sales_leads_${slug}`;

@@ -20,11 +20,24 @@ interface AdminSidebarProps {
   onClose: () => void;
 }
 
+const DEFAULT_ACTIVE_MODES = [
+  "VENTAS",
+  "COMPRAS_INTELIGENTES",
+  "GESTION_EQUIPO",
+  "RESTAURANTE",
+  "COMUNICACION",
+  "GESTION_PROYECTOS",
+  "CREATIVO",
+  "FINANZAS",
+];
+
 export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
-  const [activeModes, setActiveModes] = useState<string[]>([]);
+  // Render the configured menu immediately, then reconcile it with tenant storage.
+  // Starting empty made the sidebar briefly collapse to only the core modules on navigation.
+  const [activeModes, setActiveModes] = useState<string[]>(DEFAULT_ACTIVE_MODES);
 
   const userEmail = session?.user?.email || "admin@palmera.io";
   const userName = session?.user?.name || "Usuario Admin";
@@ -37,14 +50,14 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        setActiveModes(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setActiveModes(Array.isArray(parsed) ? parsed : DEFAULT_ACTIVE_MODES);
       } catch (e) {
-        setActiveModes(["CREATIVO", "RESTAURANTE", "FINANZAS"]);
+        setActiveModes(DEFAULT_ACTIVE_MODES);
       }
     } else {
-      const defaultModes = ["CREATIVO", "RESTAURANTE", "FINANZAS"];
-      setActiveModes(defaultModes);
-      localStorage.setItem(key, JSON.stringify(defaultModes));
+      setActiveModes(DEFAULT_ACTIVE_MODES);
+      localStorage.setItem(key, JSON.stringify(DEFAULT_ACTIVE_MODES));
     }
   }, []);
 
@@ -56,7 +69,8 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
       const saved = localStorage.getItem(key);
       if (saved) {
         try {
-          setActiveModes(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+          setActiveModes(Array.isArray(parsed) ? parsed : DEFAULT_ACTIVE_MODES);
         } catch (e) {}
       }
     };
@@ -82,6 +96,23 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
 
   const operationsModes = activeModeConfigs.filter((m) => m.category === "Operaciones");
   const supportModes = activeModeConfigs.filter((m) => m.category === "Soporte" || m.category === "Estrategia");
+
+  // Keep the active area open after route and browser back/forward navigation.
+  useEffect(() => {
+    const currentModule = [...coreModules, ...Object.values(PalmModesRegistry)].find((module) =>
+      module.menuItems.some((item) => pathname === item.path)
+    );
+
+    if (currentModule) {
+      setExpandedModule(currentModule.id);
+      localStorage.setItem("palmera_sidebar_expanded_module", currentModule.id);
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    const savedExpandedModule = localStorage.getItem("palmera_sidebar_expanded_module");
+    if (savedExpandedModule) setExpandedModule(savedExpandedModule);
+  }, []);
 
   // Custom Sidebar sections
   const sections = [
@@ -110,23 +141,27 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   ];
 
   const toggleModule = (id: string) => {
-    setExpandedModule(expandedModule === id ? null : id);
+    const nextModule = expandedModule === id ? null : id;
+    setExpandedModule(nextModule);
+    if (nextModule) localStorage.setItem("palmera_sidebar_expanded_module", nextModule);
+    else localStorage.removeItem("palmera_sidebar_expanded_module");
   };
 
   return (
     <>
-      {/* Mobile Drawer Overlay */}
+      {/* The drawer interaction is consistent on desktop and mobile. */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px]"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-border/40 bg-white dark:bg-card text-card-foreground backdrop-blur-md transition-all duration-300 ease-in-out md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+        aria-hidden={!isOpen}
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-border/40 bg-white dark:bg-card text-card-foreground backdrop-blur-md transition-all duration-300 ease-in-out ${
+          isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         }`}
       >
         {/* Brand Header */}
@@ -222,8 +257,9 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                               const isSubActive = pathname === item.path;
                               return (
                                 <Link
-                                  key={item.path}
+                                  key={`${mod.id}-${item.label}-${item.path}`}
                                   href={item.path}
+                                  onClick={onClose}
                                   className={`block py-1.5 px-3 text-xs font-medium rounded-md transition-all duration-150 ${
                                     isSubActive
                                       ? "text-amber-500 bg-amber-500/5 font-semibold"

@@ -3,9 +3,13 @@
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
 import EditableLabel from "@/components/admin/EditableLabel";
+import { clearTenantDemoData } from "@/lib/demoDataCleanup";
 
 export default function GeneralSettingsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isCleanupOpen, setIsCleanupOpen] = useState(false);
+  const [cleanupPhrase, setCleanupPhrase] = useState("");
+  const [isCleaning, setIsCleaning] = useState(false);
 
   // Core settings form state
   const [settings, setSettings] = useState({
@@ -56,6 +60,16 @@ export default function GeneralSettingsPage() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleCleanup = () => {
+    if (cleanupPhrase !== "BORRAR DATOS") return;
+    setIsCleaning(true);
+    const result = clearTenantDemoData();
+    setIsCleanupOpen(false);
+    setCleanupPhrase("");
+    setToastMessage(`Limpieza completada: ${result.removedRecords} registros eliminados.`);
+    window.setTimeout(() => window.location.reload(), 500);
   };
 
   return (
@@ -214,8 +228,21 @@ export default function GeneralSettingsPage() {
               La personalización general se propaga a todas las consolas modulares y fichas de clientes. Los logs de control registran automáticamente cada alteración.
             </span>
           </div>
+
+          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400"><Icons.Trash2 className="h-5 w-5" /></div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold text-foreground">Limpiar datos de prueba</h3>
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">Borra los contactos, datos comerciales, reservas, consumos, operaciones y auditorías del tenant actual. Conserva usuarios, contraseñas, módulos activos, ajustes y configuración de IA.</p>
+                <button type="button" onClick={() => setIsCleanupOpen(true)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-500/20 dark:text-rose-300"><Icons.Trash2 className="h-4 w-4" />Borrar datos de prueba</button>
+              </div>
+            </div>
+          </div>
         </div>
       </form>
+
+      {isCleanupOpen && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"><div role="dialog" aria-modal="true" className="w-full max-w-md rounded-3xl border border-rose-500/25 bg-card p-6 shadow-2xl"><div className="flex items-start gap-3"><div className="rounded-xl bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400"><Icons.TriangleAlert className="h-5 w-5" /></div><div><h2 className="text-lg font-black text-foreground">¿Limpiar este espacio?</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Esta acción elimina los datos operativos de prueba del tenant actual. No se puede deshacer desde Palmera.</p></div></div><div className="mt-5 rounded-xl border border-border/50 bg-background/40 p-3 text-xs text-muted-foreground">Se conservarán los usuarios, contraseñas, módulos, ajustes generales y configuración de IA.</div><label className="mt-5 block text-xs font-bold text-foreground">Escribe <span className="font-mono text-rose-600 dark:text-rose-300">BORRAR DATOS</span> para confirmar<input autoFocus value={cleanupPhrase} onChange={(event) => setCleanupPhrase(event.target.value)} placeholder="BORRAR DATOS" className="mt-2 w-full rounded-xl border border-border/60 bg-background px-3 py-2.5 font-mono text-sm outline-none focus:border-rose-500" /></label><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => { setIsCleanupOpen(false); setCleanupPhrase(""); }} className="rounded-xl border border-border/60 px-4 py-2.5 text-xs font-bold text-foreground hover:bg-muted">Cancelar</button><button type="button" disabled={cleanupPhrase !== "BORRAR DATOS" || isCleaning} onClick={handleCleanup} className="rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{isCleaning ? "Limpiando..." : "Eliminar definitivamente"}</button></div></div></div>}
     </div>
   );
 }

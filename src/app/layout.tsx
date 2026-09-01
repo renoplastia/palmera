@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import WaterBackground from "@/components/WaterBackground";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -32,8 +31,7 @@ export default function RootLayout({
       lang="es"
       className={`${outfit.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col relative">
-        <WaterBackground />
+      <body className="min-h-full flex flex-col">
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

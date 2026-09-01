@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
+import SmartSearchInput from "@/components/SmartSearchInput";
 
 interface SuperadminUser {
   id: string;
@@ -20,6 +21,7 @@ interface SuperadminTenant {
   isActive: boolean;
   createdAt: string;
   users: SuperadminUser[];
+  settings?: Array<{ key: string; value: string }>;
 }
 
 interface SuperadminAuditLog {
@@ -77,6 +79,11 @@ export default function SuperadminPage() {
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState<SuperadminTenant | null>(null);
+  const [instanceName, setInstanceName] = useState("");
+  const [instanceDomain, setInstanceDomain] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<SuperadminTenant | null>(null);
+  const [deletePhrase, setDeletePhrase] = useState("");
 
   // Search filters
   const [tenantSearch, setTenantSearch] = useState("");
@@ -183,6 +190,107 @@ export default function SuperadminPage() {
 
     updateTenantsState(updated);
     showToast("Estado de instancia actualizado.");
+  };
+
+  const getTenantSetting = (tenant: SuperadminTenant, key: string) => {
+    return tenant.settings?.find((setting) => setting.key === key)?.value;
+  };
+
+  const isMaintenanceEnabled = (tenant: SuperadminTenant) => {
+    return getTenantSetting(tenant, "maintenance_mode") === "true";
+  };
+
+  const getInstanceDatabaseName = (slug: string) => {
+    return `palmera_${slug.replace(/-/g, "_")}`;
+  };
+
+  const getProvisionCommand = (tenant: SuperadminTenant) => {
+    return [
+      "npm run instance:provision --",
+      `  --slug ${tenant.slug}`,
+      `  --name "${tenant.name}"`,
+      `  --domain ${tenant.domain || `${tenant.slug}.palmera.io`}`,
+      "  --admin-name \"Admin\"",
+      `  --admin-email admin@${tenant.domain || `${tenant.slug}.palmera.io`}`,
+    ].join("\n");
+  };
+
+  const openInstanceManagement = (tenant: SuperadminTenant) => {
+    setSelectedInstance(tenant);
+    setInstanceName(tenant.name);
+    setInstanceDomain(tenant.domain || `${tenant.slug}.palmera.io`);
+  };
+
+  const patchTenant = async (tenantId: string, payload: Record<string, unknown>) => {
+    await fetch("/api/superadmin/instances", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenantId, ...payload }),
+    });
+  };
+
+  const handleSaveInstance = async () => {
+    if (!selectedInstance) return;
+
+    const cleanName = instanceName.trim();
+    const cleanDomain = instanceDomain.trim();
+    if (!cleanName) {
+      showToast("El nombre de la instancia es obligatorio.");
+      return;
+    }
+
+    const updatedTenants = tenants.map((tenant) => {
+      if (tenant.id !== selectedInstance.id) return tenant;
+      return { ...tenant, name: cleanName, domain: cleanDomain || null };
+    });
+
+    setTenants(updatedTenants);
+    localStorage.setItem("palmera_superadmin_tenants", JSON.stringify(updatedTenants));
+    await patchTenant(selectedInstance.id, { name: cleanName, domain: cleanDomain });
+    setSelectedInstance(null);
+    showToast("Instancia actualizada.");
+  };
+
+  const handleToggleMaintenance = async (tenant: SuperadminTenant) => {
+    const nextMaintenanceMode = !isMaintenanceEnabled(tenant);
+    const updatedTenants = tenants.map((item) => {
+      if (item.id !== tenant.id) return item;
+      const settings = [
+        ...(item.settings?.filter((setting) => setting.key !== "maintenance_mode") ?? []),
+        { key: "maintenance_mode", value: String(nextMaintenanceMode) },
+      ];
+      return { ...item, settings };
+    });
+
+    setTenants(updatedTenants);
+    localStorage.setItem("palmera_superadmin_tenants", JSON.stringify(updatedTenants));
+    await patchTenant(tenant.id, { maintenanceMode: nextMaintenanceMode });
+    showToast(nextMaintenanceMode ? "Modo mantenimiento activado." : "Modo mantenimiento desactivado.");
+  };
+
+  const handleDeleteInstance = async () => {
+    if (!deleteTarget || deletePhrase !== deleteTarget.slug) return;
+
+    const updatedTenants = tenants.filter((tenant) => tenant.id !== deleteTarget.id);
+    setTenants(updatedTenants);
+    localStorage.setItem("palmera_superadmin_tenants", JSON.stringify(updatedTenants));
+    await fetch(`/api/superadmin/instances?tenantId=${encodeURIComponent(deleteTarget.id)}`, {
+      method: "DELETE",
+    });
+
+    const newLog: SuperadminAuditLog = {
+      id: "al-" + Date.now(),
+      tenant: deleteTarget.slug,
+      action: "INSTANCE_DELETED",
+      userId: "SUPERADMIN",
+      details: `Instancia '${deleteTarget.name}' (${deleteTarget.slug}) eliminada desde Superadmin.`,
+      ipAddress: "127.0.0.1",
+      createdAt: new Date().toISOString(),
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+    setDeleteTarget(null);
+    setDeletePhrase("");
+    showToast("Instancia eliminada.");
   };
 
   // Secure Password Generator Helper
@@ -589,15 +697,10 @@ export default function SuperadminPage() {
             {activeTab === "instancias" && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                  <div className="relative flex-1 max-w-sm">
-                    <Icons.Search className="absolute top-2.5 left-3 h-4 w-4 text-stone-400" />
-                    <input
-                      type="search"
-                      placeholder="Filtrar por nombre o subdominio..."
-                      value={tenantSearch}
-                      onChange={(e) => setTenantSearch(e.target.value)}
-                      className="w-full rounded-xl border border-stone-200 bg-white py-2 pr-3 pl-9 text-xs text-stone-900 placeholder-stone-400 outline-hidden focus:border-[#f27059] focus:ring-1 focus:ring-[#f27059]/30"
-                    />
+                  <SmartSearchInput value={tenantSearch} onChange={setTenantSearch} suggestions={tenants.flatMap((tenant) => [tenant.name, tenant.slug, tenant.domain ?? ""])} placeholder="Filtrar por nombre o subdominio..." className="max-w-sm flex-1" />
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                    <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">{activeCount} activas</span>
+                    <span className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">{tenants.length - activeCount} suspendidas</span>
                   </div>
                 </div>
 
@@ -640,6 +743,16 @@ export default function SuperadminPage() {
 
                         <div className="space-y-2 text-[11px] text-stone-600">
                           <div className="flex justify-between">
+                            <span>BBDD:</span>
+                            <span className="font-mono text-stone-900 font-semibold">{getInstanceDatabaseName(tenant.slug)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Mantenimiento:</span>
+                            <span className={`font-bold ${isMaintenanceEnabled(tenant) ? "text-orange-600" : "text-emerald-600"}`}>
+                              {isMaintenanceEnabled(tenant) ? "Activo" : "No"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
                             <span>Fecha Alta:</span>
                             <span className="text-stone-900 font-semibold">{new Date(tenant.createdAt).toLocaleDateString()}</span>
                           </div>
@@ -678,7 +791,16 @@ export default function SuperadminPage() {
                         )}
                       </div>
 
-                      <div className="border-t border-stone-100 pt-4 mt-5 flex items-center justify-between gap-2">
+                      <div className="border-t border-stone-100 pt-4 mt-5 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openInstanceManagement(tenant)}
+                          className="inline-flex h-8.5 items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-stone-50 px-3 text-[10px] font-bold text-stone-700 transition-all hover:bg-stone-100 cursor-pointer"
+                        >
+                          <Icons.Settings2 className="h-3.5 w-3.5" />
+                          <span>Gestionar</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => handleToggleTenant(tenant.id)}
@@ -689,6 +811,19 @@ export default function SuperadminPage() {
                           }`}
                         >
                           {tenant.isActive ? "Suspender Instancia" : "Activar Instancia"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMaintenance(tenant)}
+                          className={`inline-flex h-8.5 items-center justify-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-all cursor-pointer ${
+                            isMaintenanceEnabled(tenant)
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              : "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                          }`}
+                        >
+                          <Icons.Wrench className="h-3.5 w-3.5" />
+                          <span>{isMaintenanceEnabled(tenant) ? "Quitar Mant." : "Mantenimiento"}</span>
                         </button>
 
                         <a
@@ -711,16 +846,7 @@ export default function SuperadminPage() {
             {activeTab === "logs" && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                  <div className="relative flex-1 max-w-sm">
-                    <Icons.Search className="absolute top-2.5 left-3 h-4 w-4 text-stone-400" />
-                    <input
-                      type="search"
-                      placeholder="Buscar por acción, detalles, IP..."
-                      value={logSearch}
-                      onChange={(e) => setLogSearch(e.target.value)}
-                      className="w-full rounded-xl border border-stone-200 bg-white py-2 pr-3 pl-9 text-xs text-stone-900 placeholder-stone-400 outline-hidden focus:border-[#f27059] focus:ring-1 focus:ring-[#f27059]/30"
-                    />
-                  </div>
+                  <SmartSearchInput value={logSearch} onChange={setLogSearch} suggestions={auditLogs.flatMap((log) => [log.action, log.tenant, log.details, log.ipAddress ?? ""])} placeholder="Buscar por acción, detalles, IP..." className="max-w-sm flex-1" />
                 </div>
 
                 {/* Audit Logs Table */}
@@ -1125,6 +1251,217 @@ export default function SuperadminPage() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* INSTANCE MANAGEMENT MODAL */}
+      {selectedInstance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-3xl bg-white border border-stone-200 rounded-3xl p-6 shadow-2xl relative space-y-5 overflow-hidden">
+            <div className="flex items-start justify-between border-b border-stone-150 pb-4">
+              <div>
+                <h2 className="text-base font-black text-stone-950 flex items-center gap-2">
+                  <Icons.ServerCog className="h-5 w-5 text-[#f27059]" />
+                  <span>Gestionar instancia</span>
+                </h2>
+                <p className="text-[11px] text-stone-500 font-mono">
+                  {selectedInstance.slug}.palmera.io
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedInstance(null)}
+                className="p-1.5 rounded-lg bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors cursor-pointer"
+                title="Cerrar"
+              >
+                <Icons.X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-5">
+              <div className="md:col-span-3 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Nombre visible</span>
+                    <input
+                      value={instanceName}
+                      onChange={(event) => setInstanceName(event.target.value)}
+                      className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-semibold text-stone-900 outline-hidden focus:border-[#f27059]"
+                    />
+                  </label>
+                  <label className="space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Dominio</span>
+                    <input
+                      value={instanceDomain}
+                      onChange={(event) => setInstanceDomain(event.target.value)}
+                      className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-mono text-stone-900 outline-hidden focus:border-[#f27059]"
+                    />
+                  </label>
+                </div>
+
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-black text-stone-950">Modo mantenimiento</h3>
+                      <p className="text-[11px] leading-relaxed text-stone-500">Pausa el acceso operativo mientras se revisa la instancia.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleMaintenance(selectedInstance)}
+                      className={`inline-flex h-8.5 min-w-24 items-center justify-center rounded-lg border px-3 text-[10px] font-bold transition-all cursor-pointer ${
+                        isMaintenanceEnabled(selectedInstance)
+                          ? "border-orange-200 bg-orange-50 text-orange-700"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      }`}
+                    >
+                      {isMaintenanceEnabled(selectedInstance) ? "Activado" : "Normal"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-stone-200 bg-white p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-xs font-black text-stone-950">Comando de aprovisionamiento</h3>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(getProvisionCommand(selectedInstance))}
+                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-stone-200 bg-stone-50 px-3 text-[10px] font-bold text-stone-700 hover:bg-stone-100"
+                    >
+                      <Icons.Copy className="h-3.5 w-3.5" />
+                      <span>Copiar</span>
+                    </button>
+                  </div>
+                  <pre className="overflow-x-auto rounded-xl bg-stone-950 p-3 text-[10px] leading-5 text-stone-100">{getProvisionCommand(selectedInstance)}</pre>
+                </div>
+              </div>
+
+              <div className="md:col-span-2 space-y-3">
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4 space-y-3 text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Slug</span>
+                    <span className="font-mono font-bold text-stone-950">{selectedInstance.slug}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">BBDD</span>
+                    <span className="font-mono font-bold text-stone-950">{getInstanceDatabaseName(selectedInstance.slug)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Usuarios</span>
+                    <span className="font-black text-stone-950">{selectedInstance.users.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Estado</span>
+                    <span className={selectedInstance.isActive ? "font-bold text-emerald-700" : "font-bold text-rose-700"}>
+                      {selectedInstance.isActive ? "Activa" : "Suspendida"}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(getInstanceUrl(selectedInstance.slug))}
+                  className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold text-stone-700 hover:bg-stone-50"
+                >
+                  <Icons.Link className="h-4 w-4 text-[#f27059]" />
+                  <span>Copiar URL de acceso</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedInstance(null);
+                    handleOpenUsersModal(selectedInstance);
+                  }}
+                  className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 text-xs font-bold text-stone-700 hover:bg-stone-50"
+                >
+                  <Icons.UserCog className="h-4 w-4 text-[#f27059]" />
+                  <span>Gestionar usuarios</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteTarget(selectedInstance);
+                    setDeletePhrase("");
+                    setSelectedInstance(null);
+                  }}
+                  className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                >
+                  <Icons.Trash2 className="h-4 w-4" />
+                  <span>Eliminar instancia</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-stone-150 pt-4">
+              <button
+                type="button"
+                onClick={() => setSelectedInstance(null)}
+                className="h-9 rounded-xl border border-stone-200 bg-stone-50 px-4 text-xs font-bold text-stone-600 hover:bg-stone-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveInstance}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-tr from-[#f25c54] to-[#f79d65] px-5 text-xs font-bold text-white shadow-md shadow-orange-500/10 hover:from-[#f27059] hover:to-[#f7b267]"
+              >
+                <Icons.Save className="h-4 w-4" />
+                <span>Guardar instancia</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE INSTANCE CONFIRMATION */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-md rounded-3xl border border-rose-200 bg-white p-6 shadow-2xl space-y-5">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-rose-50 p-3 text-rose-700">
+                <Icons.TriangleAlert className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-stone-950">Eliminar instancia</h2>
+                <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                  Esta acción elimina la instancia de Superadmin. En base real borra el tenant y sus datos relacionados por cascada.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 p-3 text-xs text-rose-800">
+              Escribe <span className="font-mono font-black">{deleteTarget.slug}</span> para confirmar.
+            </div>
+
+            <input
+              autoFocus
+              value={deletePhrase}
+              onChange={(event) => setDeletePhrase(event.target.value)}
+              className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-sm font-mono text-stone-900 outline-hidden focus:border-rose-500"
+              placeholder={deleteTarget.slug}
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeletePhrase("");
+                }}
+                className="h-9 rounded-xl border border-stone-200 bg-stone-50 px-4 text-xs font-bold text-stone-600 hover:bg-stone-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={deletePhrase !== deleteTarget.slug}
+                onClick={handleDeleteInstance}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Icons.Trash2 className="h-4 w-4" />
+                <span>Eliminar definitivamente</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -52,9 +52,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <AdminSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content Area */}
-      <div className="flex flex-col md:pl-72 min-h-screen transition-all duration-300">
+      <div className="flex min-h-screen flex-col transition-all duration-300">
         {/* Top Action Bar */}
-        <AdminTopbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+        <AdminTopbar isMenuOpen={sidebarOpen} onMenuClick={() => setSidebarOpen((open) => !open)} />
 
         {/* Content Viewport */}
         <main className="flex-1 p-6 md:p-8 animate-in fade-in slide-in-from-bottom-2 duration-300">

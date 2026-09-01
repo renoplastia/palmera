@@ -43,13 +43,17 @@ export const PalmModesRegistry: Record<string, PalmModeConfig> = {
   RESTAURANTE: {
     id: "RESTAURANTE",
     name: "Restaurante",
-    description: "Gestión de mesas, comandas, reservas de comensales y escandallos/recetas.",
+    description: "Gestión de mesas, comandas, reservas de comensales, escandallos, mermas y auditoría sanitaria.",
     icon: "Utensils",
     category: "Operaciones",
     menuItems: [
       { label: "Mapa de Mesas", path: "/admin/restaurant/tables" },
+      { label: "Centro de Dirección", path: "/admin/restaurant/command-center" },
       { label: "Reservas", path: "/admin/restaurant/bookings" },
       { label: "Escandallos / Menú", path: "/admin/restaurant/recipes" },
+      { label: "Control de Mermas", path: "/admin/restaurant/waste" },
+      { label: "Sanidad & HACCP", path: "/admin/restaurant/haccp" },
+      { label: "Diario de Cierre Director", path: "/admin/restaurant/daily-report" },
       { label: "Punto de Venta (TPV)", path: "/admin/restaurant/pos" },
     ],
   },
@@ -173,6 +177,19 @@ export const PalmModesRegistry: Record<string, PalmModeConfig> = {
       { label: "Tablero Kanban", path: "/admin/projects/kanban" },
       { label: "Diagrama de Gantt", path: "/admin/projects/gantt" },
       { label: "Registro de Tiempos", path: "/admin/projects/timesheets" },
+    ],
+  },
+  COMPRAS_INTELIGENTES: {
+    id: "COMPRAS_INTELIGENTES",
+    name: "Compras Inteligentes",
+    description: "Gestión predictiva de compras por cadencia histórica y velocidad de consumo.",
+    icon: "ShoppingBag",
+    category: "Operaciones",
+    menuItems: [
+      { label: "Dashboard de Compras", path: "/admin/purchasing" },
+      { label: "Sugerencias de Compra IA", path: "/admin/purchasing" },
+      { label: "Pedidos a Proveedores", path: "/admin/purchasing" },
+      { label: "Auditoría de Albaranes", path: "/admin/purchasing" },
     ],
   },
 };

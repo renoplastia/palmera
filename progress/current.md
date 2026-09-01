@@ -1,13 +1,7 @@
-# Sesión actual
+# Sesión Actual — Palmera Core
 
-- **Feature en curso:** None
-- **Inicio:** -
-- **Agente:** Antigravity
+**Estado:** En progreso.
 
-## Plan
+**Feature:** Centro de Dirección de Servicio para el módulo Restaurante.
 
-1. 
-
-## Bitácora
-
-- 
+**Plan:** Añadir una vista operativa para preparación, servicio y cierre; integrar su acceso en el modo Restaurante; verificar tipos y compilación sin alterar los cambios locales existentes.

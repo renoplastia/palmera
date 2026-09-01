@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import * as Icons from "lucide-react";
+import SmartSearchInput from "@/components/SmartSearchInput";
 
 interface FollowUp {
   id: string;
@@ -56,16 +57,7 @@ export default function FollowUpTab() {
 
       {/* Toolbar / Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-muted/15 p-4 rounded-xl border border-border/40">
-        <div className="relative flex-1 max-w-sm">
-          <Icons.Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por cliente o anotación..."
-            className="w-full rounded-lg border border-border/50 bg-background py-1.5 pr-3 pl-9 text-xs text-foreground outline-hidden focus:border-amber-500/50"
-          />
-        </div>
+        <SmartSearchInput value={searchQuery} onChange={setSearchQuery} suggestions={followUps.flatMap((followUp) => [followUp.contactName, followUp.note])} placeholder="Buscar por cliente o anotación..." className="max-w-sm flex-1" />
 
         <div className="flex flex-wrap gap-1.5">
           {(["ALL", "CALL", "EMAIL", "MEETING", "NOTE"] as const).map((t) => (
