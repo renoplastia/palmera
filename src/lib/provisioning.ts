@@ -133,6 +133,20 @@ export class ProvisioningService {
         // Importante: CREATE DATABASE no puede ejecutarse en una transacción
         await pool.query(`CREATE DATABASE "${dbName.replace(/"/g, "")}"`);
       }
+    } catch (err) {
+      // Preserve AggregateError inner details (pg throws AggregateError with .errors[] and empty .message)
+      const anyErr = err as any;
+      const inner = Array.isArray(anyErr?.errors)
+        ? anyErr.errors.map((e: any) => e?.message || String(e)).filter(Boolean).join(" | ")
+        : "";
+      const rawMsg = anyErr?.message || "";
+      const combined = [rawMsg, inner].filter(Boolean).join(inner && rawMsg ? ": " : "");
+      const fallbackMsg = combined || `${anyErr?.code || "AggregateError"} (Postgres no disponible en localhost:5432 - verifica que Postgres esté corriendo)`;
+      const wrapped = new Error(`ensureDatabase failed for "${dbName}": ${fallbackMsg}`);
+      (wrapped as any).cause = err;
+      (wrapped as any).errors = anyErr?.errors;
+      (wrapped as any).code = anyErr?.code || "ECONNREFUSED";
+      throw wrapped;
     } finally {
       await pool.end();
     }
@@ -142,11 +156,14 @@ export class ProvisioningService {
     const result = spawnSync("npx", ["prisma", "db", "push"], {
       cwd: process.cwd(),
       env: { ...process.env, DATABASE_URL: databaseUrl },
-      stdio: "inherit",
+      encoding: "utf-8",
     });
 
     if (result.status !== 0) {
-      throw new Error("Prisma db push failed during provisioning.");
+      const stdout = (result.stdout as string) || "";
+      const stderr = (result.stderr as string) || "";
+      const out = [stdout, stderr].filter(Boolean).join("\n").slice(0, 4000);
+      throw new Error(`Prisma db push failed during provisioning (exit ${result.status}).\n${out}`);
     }
   }
 

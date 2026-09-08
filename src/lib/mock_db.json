@@ -1,5 +1,23 @@
 [
   {
+    "id": "t-1788354875416",
+    "slug": "belpane",
+    "name": "Belpane",
+    "domain": "belpane.palmera.io",
+    "isActive": true,
+    "createdAt": "2026-09-02T13:14:35.416Z",
+    "users": [
+      {
+        "id": "u-1788354875416",
+        "name": "Jordi Pérez",
+        "email": "belpane@gmail.com",
+        "role": "ADMIN",
+        "createdAt": "2026-09-02T13:14:35.416Z",
+        "password": "admin1234"
+      }
+    ]
+  },
+  {
     "id": "t1",
     "slug": "gastroshows",
     "name": "Gastroshows S.L.",
@@ -14,32 +32,6 @@
         "role": "ADMIN",
         "createdAt": "2026-05-04T10:29:15.750Z",
         "password": "Bf*Q)HL85fk)|2rK"
-      }
-    ]
-  },
-  {
-    "id": "t2",
-    "slug": "sport2live",
-    "name": "Sport2Live Club",
-    "domain": "sport2live.com",
-    "isActive": false,
-    "createdAt": "2026-05-07T10:29:15.750Z",
-    "users": []
-  },
-  {
-    "id": "t3",
-    "slug": "delish-catering",
-    "name": "Delish Catering",
-    "domain": null,
-    "isActive": true,
-    "createdAt": "2026-05-17T10:29:15.750Z",
-    "users": [
-      {
-        "id": "u5",
-        "name": "María López",
-        "email": "maria@delish.com",
-        "role": "ADMIN",
-        "createdAt": "2026-05-17T10:29:15.750Z"
       }
     ]
   }

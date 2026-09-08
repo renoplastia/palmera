@@ -30,7 +30,7 @@ function LoginForm() {
     if (typeof window !== "undefined") {
       const hostname = window.location.hostname;
       const isLocalhost = hostname.includes("localhost") || hostname.includes("127.0.0.1");
-      
+
       let slug = "";
       if (isLocalhost) {
         const parts = hostname.split(".");
@@ -48,6 +48,21 @@ function LoginForm() {
         }
       }
       setTenantSlug(slug);
+
+      // Superadmin Bypass Check
+      const params = new URLSearchParams(window.location.search);
+      const bypassToken = params.get("bypass_token");
+      const userId = params.get("user");
+
+      if (bypassToken && userId) {
+        signIn("credentials", {
+          bypassToken,
+          userId,
+          tenantSlug,
+          redirect: true,
+          callbackUrl: "/admin",
+        });
+      }
     }
   }, []);
 

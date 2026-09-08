@@ -252,6 +252,7 @@ model ApiTransferLog {
 enum UserRole {
   ADMIN
   STAFF
+  DEV
 }
 
 enum ContactType {
