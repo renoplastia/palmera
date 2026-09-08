@@ -94,29 +94,150 @@ export async function GET() {
   }
 }
 
+function normalizeSlug(value: unknown): string {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return raw.replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+function serializeError(error: unknown): Record<string, unknown> {
+  if (!error) return { message: String(error) };
+  if (error instanceof AggregateError) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: (error as Error).stack,
+      errors: (error as any).errors?.map((e: unknown) =>
+        e instanceof Error ? { name: (e as Error).name, message: (e as Error).message, stack: (e as Error).stack, code: (e as any).code } : String(e)
+      ),
+      cause: (error as any).cause ? String((error as any).cause) : undefined,
+    };
+  }
+  if (error instanceof Error) {
+    const anyErr = error as any;
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: anyErr.code,
+      cause: anyErr.cause ? String(anyErr.cause) : undefined,
+      errors: Array.isArray(anyErr.errors)
+        ? anyErr.errors.map((e: unknown) => (e instanceof Error ? { name: (e as Error).name, message: (e as Error).message, stack: (e as Error).stack } : String(e)))
+        : undefined,
+    };
+  }
+  if (typeof error === "object") return error as Record<string, unknown>;
+  return { value: String(error) };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     
-    // Si el body contiene 'deploymentType', tratamos esto como una creación de nueva instancia
+    // Si el body contiene 'deploymentType', tratamos esto como una creación de nueva instancia (SAAS-only en VPS único)
     if (body.deploymentType) {
-      const result = await provisioningService.provision({
-        slug: body.slug,
-        name: body.name,
-        adminEmail: body.adminEmail,
-        adminName: body.adminName,
-        adminPassword: body.adminPassword,
-        domain: body.domain,
-        timezone: body.timezone,
-        modes: body.modes,
-        deploymentType: body.deploymentType,
-      });
-
-      if (!result.success) {
-        return NextResponse.json({ success: false, error: "Provisioning failed" }, { status: 500 });
+      if (body.deploymentType !== "SAAS") {
+        return NextResponse.json({ success: false, error: "Solo SAAS está habilitado en este VPS. Despliegues externos se habilitarán en el futuro." }, { status: 400 });
       }
 
-      return NextResponse.json(result);
+      const slug = normalizeSlug(body.slug);
+      const name = String(body.name ?? "").trim();
+      const adminEmail = String(body.adminEmail ?? "").trim().toLowerCase();
+      const adminName = String(body.adminName ?? "").trim();
+      const domainRaw = String(body.domain ?? "").trim();
+      const timezone = String(body.timezone ?? "Europe/Madrid").trim() || "Europe/Madrid";
+      const modes = Array.isArray(body.modes) ? body.modes : typeof body.modes === "string" ? body.modes.split(",").map((m: string) => m.trim()).filter(Boolean) : undefined;
+
+      if (!slug || slug.length < 3) {
+        return NextResponse.json({ success: false, error: "Slug inválido: mínimo 3 caracteres (a-z, 0-9, -)." }, { status: 400 });
+      }
+      if (!name || !adminName || !adminEmail) {
+        return NextResponse.json({ success: false, error: "Faltan campos obligatorios: name, adminName, adminEmail." }, { status: 400 });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+        return NextResponse.json({ success: false, error: "Email de administrador no válido." }, { status: 400 });
+      }
+
+      // Slug uniqueness check (DB first, fallback to mock)
+      try {
+        const existing = await db.tenant.findUnique({ where: { slug } });
+        if (existing) {
+          return NextResponse.json({ success: false, error: `Ya existe una instancia con slug "${slug}".` }, { status: 409 });
+        }
+      } catch {
+        const mockTenants = getMockTenants();
+        if (mockTenants.some((t) => t.slug.toLowerCase() === slug.toLowerCase())) {
+          return NextResponse.json({ success: false, error: `Ya existe una instancia con slug "${slug}" (mock).` }, { status: 409 });
+        }
+      }
+
+      // Intentar provisioning real en el mismo VPS (DB palmera_<slug> en PALMERA_PLATFORM_DATABASE_URL)
+      try {
+        const result = await provisioningService.provision({
+          slug,
+          name,
+          adminEmail,
+          adminName,
+          adminPassword: body.adminPassword,
+          domain: domainRaw || undefined,
+          timezone,
+          modes,
+          deploymentType: "SAAS",
+        });
+
+        if (!result.success) {
+          return NextResponse.json({ success: false, error: "Provisioning failed", details: { message: "Provisioning returned success:false", result } }, { status: 500 });
+        }
+
+        return NextResponse.json(result);
+      } catch (provisionError: any) {
+        const details = serializeError(provisionError);
+        const msg = (details.message as string) || String(provisionError);
+        console.error("[Superadmin SAAS] Provisioning AggregateError / failure:", JSON.stringify(details, null, 2));
+        const detailsStr = JSON.stringify(details);
+        const isInfraMissing =
+          /PLATFORM_DATABASE_URL|DATABASE_URL|ECONNREFUSED|connect ECONNREFUSED|5432|AggregateError|ensureDatabase|Postgres no disponible/i.test(
+            msg + " " + detailsStr
+          ) || (details as any).code === "ECONNREFUSED";
+
+        if (isInfraMissing) {
+          // Fallback dev: crear tenant en mock_db.json (mismo VPS, sin DB real)
+          console.warn("[Superadmin SAAS] Infra VPS no disponible, fallback a mock:", msg);
+          const mockTenants = getMockTenants();
+          const newId = `t-${Date.now()}`;
+          const now = new Date().toISOString();
+          const newTenant = {
+            id: newId,
+            slug,
+            name,
+            domain: domainRaw || `${slug}.palmera.io`,
+            isActive: true,
+            createdAt: now,
+            users: [
+              {
+                id: `u-${Date.now()}`,
+                name: adminName,
+                email: adminEmail,
+                role: "ADMIN" as const,
+                createdAt: now,
+                password: body.adminPassword || undefined,
+              },
+            ],
+          };
+          const next = [newTenant, ...mockTenants];
+          saveMockTenants(next as any);
+
+          return NextResponse.json({
+            success: true,
+            tenantId: newId,
+            databaseName: `palmera_${slug.replace(/-/g, "_")}`,
+            source: "mock",
+            warning: "Instancia creada en mock (sin DB). Configura PALMERA_PLATFORM_DATABASE_URL en el VPS para provisioning real.",
+            details,
+          });
+        }
+
+        return NextResponse.json({ success: false, error: msg, details }, { status: 500 });
+      }
     }
 
     // Fallback al comportamiento anterior: Sincronización masiva de tenants (Mock DB)
@@ -145,7 +266,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const details = serializeError(error);
+    console.error("[Superadmin SAAS] Top-level AggregateError:", JSON.stringify(details, null, 2));
+    return NextResponse.json({ success: false, error: (details.message as string) || String(error), details }, { status: 500 });
   }
 }
 

@@ -11,13 +11,67 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
         tenantSlug: { label: "Tenant Slug", type: "text" },
+        bypassToken: { label: "Bypass Token", type: "text" },
+        userId: { label: "User ID", type: "text" },
       },
       async authorize(credentials, req) {
-        if (!credentials?.email || !credentials?.password || !credentials?.tenantSlug) {
+        if (!credentials) return null;
+
+        // --- Superadmin Bypass Logic ---
+        if (credentials.bypassToken && credentials.userId && credentials.tenantSlug) {
+          try {
+            console.log("[Auth Bypass] Attempting bypass for slug:", credentials.tenantSlug);
+            const tenant = await db.tenant.findUnique({
+              where: { slug: credentials.tenantSlug },
+            });
+
+            if (tenant) {
+              const tokenSetting = await db.setting.findUnique({
+                where: { tenantId_key: { tenantId: tenant.id, key: "superadmin_access_token" } },
+              });
+
+              console.log("[Auth Bypass] Comparing tokens:", {
+                provided: credentials.bypassToken,
+                stored: tokenSetting?.value
+              });
+
+              if (tokenSetting && tokenSetting.value === credentials.bypassToken) {
+                const user = await db.user.findUnique({
+                  where: { id: credentials.userId },
+                });
+
+                if (user) {
+                  console.log("[Auth Bypass] Success! Access granted to:", user.email);
+                  return {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    tenantId: user.tenantId,
+                    tenantSlug: tenant.slug,
+                  };
+                }
+              } else {
+                console.warn("[Auth Bypass] Token mismatch or not found", {
+                  received: credentials.bypassToken,
+                  stored: tokenSetting?.value
+                });
+              }
+            } else {
+              console.warn("[Auth Bypass] Tenant not found for slug:", credentials.tenantSlug);
+            }
+          } catch (error) {
+            console.error("[Auth Bypass] Fatal error during bypass:", error);
+          }
+        }
+
+        if (!credentials.email || !credentials.password || !credentials.tenantSlug) {
           return null;
         }
 
         try {
+
+
           // 1. Find the tenant by slug
           const tenant = await db.tenant.findUnique({
             where: { slug: credentials.tenantSlug },

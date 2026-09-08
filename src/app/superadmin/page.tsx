@@ -85,7 +85,7 @@ export default function SuperadminPage() {
   const [deleteTarget, setDeleteTarget] = useState<SuperadminTenant | null>(null);
   const [deletePhrase, setDeletePhrase] = useState("");
 
-  // Create Instance Modal State
+  // Create Instance Modal State — SAAS single-VPS only (ON_PREMISE kept in types for future)
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createData, setCreateData] = useState<{
     name: string;
@@ -109,10 +109,18 @@ export default function SuperadminPage() {
     modes: "VENTAS,COMUNICACION,GESTION_PROYECTOS"
   });
   const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createTechnical, setCreateTechnical] = useState<string | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
 
   // Search filters
   const [tenantSearch, setTenantSearch] = useState("");
   const [logSearch, setLogSearch] = useState("");
+
+  // Access Menu State
+  const [accessMenuOpen, setAccessMenuOpen] = useState<{ tenantId: string; x: number; y: number } | null>(null);
+  const [selectedUserForAccess, setSelectedUserForAccess] = useState<SuperadminUser | null>(null);
+
 
   // Load instances, audit logs and local invitations
   useEffect(() => {
@@ -318,6 +326,242 @@ export default function SuperadminPage() {
     showToast("Instancia eliminada.");
   };
 
+  const normalizeSlug = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+  const buildTechnicalDetails = (opts: {
+    payload?: Record<string, unknown>;
+    httpStatus?: number;
+    serverData?: unknown;
+    error?: unknown;
+  }): string => {
+    const err = opts.error as any;
+    const serializeError = (error: unknown): Record<string, unknown> => {
+      if (!error) return {};
+      if (error instanceof Error) {
+        const anyErr = error as any;
+        return {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+          cause: anyErr.cause ? String(anyErr.cause) : undefined,
+          // AggregateError has .errors
+          errors: Array.isArray(anyErr.errors)
+            ? anyErr.errors.map((e: unknown) => (e instanceof Error ? { name: (e as Error).name, message: (e as Error).message, stack: (e as Error).stack } : String(e)))
+            : undefined,
+          code: anyErr.code,
+        };
+      }
+      if (typeof error === "object") return error as Record<string, unknown>;
+      return { value: String(error) };
+    };
+
+    const details: Record<string, unknown> = {
+      timestamp: new Date().toISOString(),
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+      url: typeof window !== "undefined" ? window.location.href : undefined,
+      payload: opts.payload,
+      httpStatus: opts.httpStatus,
+      serverResponse: opts.serverData,
+      clientError: serializeError(opts.error),
+    };
+    // Prettify AggregateError inner messages if present
+    const clientErr = details.clientError as any;
+    if (clientErr?.errors?.length) {
+      details.aggregateMessages = clientErr.errors.map((e: any) => e.message || String(e));
+    }
+    return JSON.stringify(details, null, 2);
+  };
+
+  const handleCreateInstance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
+    setCreateTechnical(null);
+
+    const slug = normalizeSlug(createData.slug);
+    const name = createData.name.trim();
+    const adminName = createData.adminName.trim();
+    const adminEmail = createData.adminEmail.trim().toLowerCase();
+    const adminPassword = createData.adminPassword.trim();
+    const domain = createData.domain.trim();
+    const timezone = createData.timezone.trim() || "Europe/Madrid";
+    const modes = createData.modes
+      .split(",")
+      .map((m) => m.trim().toUpperCase())
+      .filter(Boolean);
+
+    if (!slug || slug.length < 3) {
+      setCreateError("El slug debe tener al menos 3 caracteres (a-z, 0-9, -).");
+      return;
+    }
+    if (!name || !adminName || !adminEmail) {
+      setCreateError("Nombre de instancia, administrador y email son obligatorios.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+      setCreateError("Email de administrador no válido.");
+      return;
+    }
+    if (tenants.some((t) => t.slug.toLowerCase() === slug.toLowerCase())) {
+      setCreateError(`Ya existe una instancia con slug "${slug}".`);
+      return;
+    }
+
+    const payload = {
+      slug,
+      name,
+      adminName,
+      adminEmail,
+      adminPassword: adminPassword ? "***" : undefined,
+      domain: domain || undefined,
+      timezone,
+      modes,
+      deploymentType: "SAAS" as const,
+    };
+    const rawPayload = {
+      slug,
+      name,
+      adminName,
+      adminEmail,
+      adminPassword: adminPassword || undefined,
+      domain: domain || undefined,
+      timezone,
+      modes,
+      deploymentType: "SAAS" as const,
+    };
+
+    setCreateLoading(true);
+    try {
+      const res = await fetch("/api/superadmin/instances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rawPayload),
+      });
+      let data: any = null;
+      let rawText: string | null = null;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        try {
+          rawText = await res.text();
+        } catch {}
+      }
+      if (!res.ok || !data?.success) {
+        const serverMsg = data?.error || rawText || `HTTP ${res.status} sin cuerpo JSON`;
+        const technical = buildTechnicalDetails({
+          payload,
+          httpStatus: res.status,
+          serverData: data ?? rawText ?? null,
+          error: new Error(serverMsg),
+        });
+        const enrichedTechnical = data?.details
+          ? JSON.stringify(
+              {
+                ...JSON.parse(technical),
+                serverDetails: data.details,
+              },
+              null,
+              2
+            )
+          : technical;
+        setCreateTechnical(enrichedTechnical);
+        const shortMsg = data?.details?.message || serverMsg;
+        const isAggregate = /AggregateError/i.test(shortMsg) || /AggregateError/i.test(JSON.stringify(data?.details ?? ""));
+        setCreateError(
+          isAggregate
+            ? `AggregateError — revisa detalles técnicos abajo. ${shortMsg}`
+            : shortMsg
+        );
+        setShowErrorModal(true);
+        setCreateLoading(false);
+        return;
+      }
+
+      // Build optimistic tenant for single-VPS SAAS (mirrors API behavior until GET refresh)
+      const newTenant: SuperadminTenant = {
+        id: data.tenantId || `t-${Date.now()}`,
+        slug,
+        name,
+        domain: domain || `${slug}.palmera.io`,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        users: [
+          {
+            id: `u-${Date.now()}`,
+            name: adminName,
+            email: adminEmail,
+            role: "ADMIN",
+            createdAt: new Date().toISOString(),
+          },
+        ],
+        settings: [
+          { key: "maintenance_mode", value: "false" },
+          { key: "palmera_active_modes", value: JSON.stringify(modes) },
+        ],
+      };
+
+      // Persist to mock layer for local dev without DB (API already does it server-side)
+      const nextTenants = [newTenant, ...tenants];
+      setTenants(nextTenants);
+      localStorage.setItem("palmera_superadmin_tenants", JSON.stringify(nextTenants));
+
+      // Refresh from server (DB or mock) to get canonical data
+      try {
+        const refresh = await fetch("/api/superadmin/instances");
+        const rdata = await refresh.json();
+        if (rdata.success && Array.isArray(rdata.tenants)) {
+          setTenants(rdata.tenants);
+          localStorage.setItem("palmera_superadmin_tenants", JSON.stringify(rdata.tenants));
+        }
+      } catch {}
+
+      setAuditLogs((prev) => [
+        {
+          id: `al-${Date.now()}`,
+          tenant: slug,
+          action: "INSTANCE_CREATED",
+          userId: "SUPERADMIN",
+          details: `Instancia '${name}' (${slug}) creada en VPS (SAAS) por Superadmin.`,
+          ipAddress: "127.0.0.1",
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+
+      setShowCreateModal(false);
+      setCreateData({
+        name: "",
+        slug: "",
+        adminName: "",
+        adminEmail: "",
+        adminPassword: "",
+        domain: "",
+        timezone: "Europe/Madrid",
+        deploymentType: "SAAS",
+        modes: "VENTAS,COMUNICACION,GESTION_PROYECTOS",
+      });
+      setCreateError(null);
+      setCreateTechnical(null);
+      showToast(`Instancia "${slug}" creada en este VPS.`);
+    } catch (err: any) {
+      const message = err?.message || "Error inesperado al crear la instancia.";
+      setCreateError(message);
+      const technical = buildTechnicalDetails({
+        payload,
+        error: err,
+      });
+      setCreateTechnical(technical);
+      setShowErrorModal(true);
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
   // Secure Password Generator Helper
   const generateSecurePassword = () => {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=";
@@ -491,7 +735,47 @@ export default function SuperadminPage() {
     }
   };
 
+  const handleQuickAccess = (e: React.MouseEvent, tenant: SuperadminTenant) => {
+    setAccessMenuOpen({
+      tenantId: tenant.id,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  };
+
+  const handleAdminAccess = async (tenant: SuperadminTenant) => {
+    try {
+      // Request a Magic Link token from the backend
+      const res = await fetch("/api/superadmin/access-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: tenant.id, role: "ADMIN" }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        window.open(data.url, "_blank");
+        showToast("Redirigiendo como Administrador...");
+      } else {
+        showToast("Error al generar acceso privilegiado.");
+      }
+    } catch (err) {
+      showToast("Error de conexión.");
+    } finally {
+      setAccessMenuOpen(null);
+    }
+  };
+
+  const handleUserAccess = (user: SuperadminUser, tenant: SuperadminTenant) => {
+    const url = `${window.location.protocol}//${tenant.slug}.localhost:3000/login?user=${user.id}`;
+    window.open(url, "_blank");
+    showToast(`Redirigiendo como ${user.name}...`);
+    setAccessMenuOpen(null);
+    setSelectedUserForAccess(null);
+  };
+
   const copyToClipboard = (text: string) => {
+
     navigator.clipboard.writeText(text);
     showToast("Copiado al portapapeles.");
   };
@@ -721,11 +1005,26 @@ export default function SuperadminPage() {
             {/* TABS 2: INSTANCIAS */}
             {activeTab === "instancias" && (
               <div className="space-y-4 animate-in fade-in duration-200">
-                <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                  <SmartSearchInput value={tenantSearch} onChange={setTenantSearch} suggestions={tenants.flatMap((tenant) => [tenant.name, tenant.slug, tenant.domain ?? ""])} placeholder="Filtrar por nombre o subdominio..." className="max-w-sm flex-1" />
-                  <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-stone-500">
-                    <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">{activeCount} activas</span>
-                    <span className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">{tenants.length - activeCount} suspendidas</span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                    <SmartSearchInput value={tenantSearch} onChange={setTenantSearch} suggestions={tenants.flatMap((tenant) => [tenant.name, tenant.slug, tenant.domain ?? ""])} placeholder="Filtrar por nombre o subdominio..." className="max-w-sm flex-1" />
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">{activeCount} activas</span>
+                      <span className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-700">{tenants.length - activeCount} suspendidas</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateError(null);
+                        setShowCreateModal(true);
+                      }}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-tr from-[#f25c54] to-[#f79d65] px-4 text-xs font-black text-white shadow-md shadow-orange-500/10 hover:from-[#f27059] hover:to-[#f7b267] active:scale-[0.98] transition-all cursor-pointer"
+                    >
+                      <Icons.Plus className="h-4 w-4" />
+                      <span>Crear instancia</span>
+                    </button>
                   </div>
                 </div>
 
@@ -826,6 +1125,17 @@ export default function SuperadminPage() {
                           <span>Gestionar</span>
                         </button>
 
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => handleQuickAccess(e, tenant)}
+                            className="inline-flex h-8.5 items-center justify-center gap-1.5 rounded-lg bg-stone-900 text-white px-3 text-[10px] font-bold transition-all hover:bg-stone-800 cursor-pointer w-full"
+                          >
+                            <Icons.ExternalLink className="h-3.5 w-3.5" />
+                            <span>Acceder</span>
+                          </button>
+                        </div>
+
                         <button
                           type="button"
                           onClick={() => handleToggleTenant(tenant.id)}
@@ -851,15 +1161,6 @@ export default function SuperadminPage() {
                           <span>{isMaintenanceEnabled(tenant) ? "Quitar Mant." : "Mantenimiento"}</span>
                         </button>
 
-                        <a
-                          href={getInstanceUrl(tenant.slug)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex h-8.5 items-center justify-center gap-1.5 px-3 rounded-lg bg-gradient-to-tr from-[#f25c54] to-[#f7b267] hover:from-[#f27059] hover:to-[#f79d65] font-bold text-white text-[10px] transition-all cursor-pointer shadow-xs"
-                        >
-                          <span>Acceder</span>
-                          <Icons.ArrowRight className="h-3 w-3" />
-                        </a>
                       </div>
                     </div>
                   ))}
@@ -1072,14 +1373,25 @@ export default function SuperadminPage() {
           <div className="w-full max-w-4xl bg-white border border-stone-200 rounded-3xl p-6 shadow-2xl relative space-y-6 overflow-hidden max-h-[90vh] flex flex-col">
             
             <div className="flex justify-between items-start border-b border-stone-150 pb-4 shrink-0">
-              <div>
-                <h2 className="text-base font-black text-stone-950 flex items-center gap-2">
-                  <Icons.UserCog className="h-5 w-5 text-[#f27059]" />
-                  <span>Gestionar Usuarios: <span className="text-[#f4845f]">{selectedTenant.name}</span></span>
-                </h2>
-                <p className="text-[11px] text-stone-500">
-                  Modifica, elimina, genera contraseñas seguras o añade miembros para {selectedTenant.slug}.palmera.io.
-                </p>
+              <div className="flex items-center gap-4">
+                <div>
+                  <h2 className="text-base font-black text-stone-950 flex items-center gap-2">
+                    <Icons.UserCog className="h-5 w-5 text-[#f27059]" />
+                    <span>Gestionar Usuarios: <span className="text-[#f4845f]">{selectedTenant.name}</span></span>
+                  </h2>
+                  <p className="text-[11px] text-stone-500">
+                    Modifica, elimina, genera contraseñas seguras o añade miembros para {selectedTenant.slug}.palmera.io.
+                  </p>
+                </div>
+                {selectedUserForAccess && (
+                  <button
+                    onClick={() => handleUserAccess(selectedUserForAccess, selectedTenant)}
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white px-3 text-[10px] font-bold hover:bg-emerald-700 transition-all cursor-pointer shadow-sm"
+                  >
+                    <Icons.LogIn className="h-3 w-3" />
+                    <span>Acceder como Usuario</span>
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setSelectedTenant(null)}
@@ -1491,6 +1803,256 @@ export default function SuperadminPage() {
         </div>
       )}
 
+      {/* CREATE INSTANCE MODAL — SAAS single-VPS */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl space-y-5">
+            <div className="flex items-start justify-between border-b border-stone-150 pb-4">
+              <div>
+                <h2 className="text-base font-black text-stone-950 flex items-center gap-2">
+                  <Icons.Plus className="h-5 w-5 text-[#f27059]" />
+                  <span>Crear instancia SAAS</span>
+                </h2>
+                <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                  Se creará en <span className="font-mono font-bold text-stone-700">este mismo VPS</span> (DB <span className="font-mono">palmera_&lt;slug&gt;</span>). Subdominio <span className="font-mono">slug.palmera.io</span> vía proxy existente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="p-1.5 rounded-lg bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors cursor-pointer"
+              >
+                <Icons.X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateInstance} className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Nombre visible *</span>
+                  <input
+                    required
+                    value={createData.name}
+                    onChange={(e) => setCreateData((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Ej. Gastroshows Barcelona"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-semibold text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Slug (subdominio) *</span>
+                  <input
+                    required
+                    value={createData.slug}
+                    onChange={(e) => setCreateData((p) => ({ ...p, slug: normalizeSlug(e.target.value) }))}
+                    placeholder="ej. gastroshows"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-mono text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                  <span className="text-[9px] text-stone-400">a-z, 0-9, guiones. Mín. 3. Se normaliza automático.</span>
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Admin — Nombre *</span>
+                  <input
+                    required
+                    value={createData.adminName}
+                    onChange={(e) => setCreateData((p) => ({ ...p, adminName: e.target.value }))}
+                    placeholder="Ej. Ana García"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-semibold text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Admin — Email *</span>
+                  <input
+                    required
+                    type="email"
+                    value={createData.adminEmail}
+                    onChange={(e) => setCreateData((p) => ({ ...p, adminEmail: e.target.value }))}
+                    placeholder="admin@empresa.es"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-mono text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 flex items-center justify-between">
+                    <span>Admin — Contraseña</span>
+                    <button
+                      type="button"
+                      onClick={() => setCreateData((p) => ({ ...p, adminPassword: generateSecurePassword() }))}
+                      className="text-[9px] font-black text-[#f27059] hover:underline cursor-pointer"
+                    >
+                      Autogenerar
+                    </button>
+                  </span>
+                  <input
+                    value={createData.adminPassword}
+                    onChange={(e) => setCreateData((p) => ({ ...p, adminPassword: e.target.value }))}
+                    placeholder="Vacío = autogenerada"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-mono text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Dominio (opcional)</span>
+                  <input
+                    value={createData.domain}
+                    onChange={(e) => setCreateData((p) => ({ ...p, domain: e.target.value }))}
+                    placeholder="ej. gastroshows.palmera.io"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-mono text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                  <span className="text-[9px] text-stone-400">Vacío = {createData.slug ? `${createData.slug}.palmera.io` : "slug.palmera.io"} en este VPS.</span>
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Zona horaria</span>
+                  <select
+                    value={createData.timezone}
+                    onChange={(e) => setCreateData((p) => ({ ...p, timezone: e.target.value }))}
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-semibold text-stone-900 outline-hidden focus:border-[#f27059]"
+                  >
+                    <option value="Europe/Madrid">Europe/Madrid</option>
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="Europe/Paris">Europe/Paris</option>
+                    <option value="America/Mexico_City">America/Mexico_City</option>
+                    <option value="America/Bogota">America/Bogota</option>
+                    <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</option>
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Sectores iniciales (CSV)</span>
+                  <input
+                    value={createData.modes}
+                    onChange={(e) => setCreateData((p) => ({ ...p, modes: e.target.value }))}
+                    placeholder="VENTAS,COMUNICACION,GESTION_PROYECTOS"
+                    className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-xs font-mono text-stone-900 outline-hidden focus:border-[#f27059]"
+                  />
+                  <span className="text-[9px] text-stone-400">IDs de PalmModesRegistry. Ej. RESTAURANTE,GESTION_EQUIPO.</span>
+                </label>
+              </div>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+                <span className="font-black">SAAS en este VPS:</span> crea la base <span className="font-mono">palmera_{normalizeSlug(createData.slug) || "slug"}</span> en el mismo Postgres (`PALMERA_PLATFORM_DATABASE_URL`) y ejecuta `prisma db push` + seed. Preparado para multi-server futuro, pero ahora todo queda en el mismo dominio.
+              </div>
+
+              {createError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-2">
+                  <div className="text-xs font-bold text-rose-700 flex items-start gap-2">
+                    <Icons.TriangleAlert className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span className="flex-1 break-words">{createError}</span>
+                  </div>
+                  {createTechnical && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowErrorModal(true)}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-2.5 text-[10px] font-black text-rose-700 hover:bg-rose-100 cursor-pointer"
+                      >
+                        <Icons.Bug className="h-3.5 w-3.5" />
+                        Ver detalles técnicos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(createTechnical);
+                          showToast("Detalles técnicos copiados.");
+                        }}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2.5 text-[10px] font-bold text-stone-700 hover:bg-stone-100 cursor-pointer"
+                      >
+                        <Icons.Copy className="h-3.5 w-3.5" />
+                        Copiar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 border-t border-stone-150 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="h-9 rounded-xl border border-stone-200 bg-stone-50 px-4 text-xs font-bold text-stone-600 hover:bg-stone-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-tr from-[#f25c54] to-[#f79d65] px-5 text-xs font-black text-white shadow-md shadow-orange-500/10 hover:from-[#f27059] hover:to-[#f7b267] disabled:opacity-50 cursor-pointer"
+                >
+                  {createLoading ? <Icons.Loader2 className="h-4 w-4 animate-spin" /> : <Icons.Plus className="h-4 w-4" />}
+                  <span>{createLoading ? "Creando…" : "Crear en este VPS"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ERROR TECHNICAL DETAILS POP-UP (copy for IA) */}
+      {showErrorModal && createError && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-stone-950/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl border border-rose-200 bg-white shadow-2xl overflow-hidden">
+            <div className="flex items-start justify-between gap-3 border-b border-rose-100 bg-rose-50 px-6 py-4">
+              <div className="flex gap-3">
+                <div className="rounded-xl bg-rose-600 p-2.5 text-white shadow-sm">
+                  <Icons.Bug className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-rose-950">Error técnico — Detalles para depuración</h2>
+                  <p className="mt-0.5 text-xs leading-relaxed text-rose-700">
+                    Copia este bloque completo y envíaselo a la IA. Incluye payload, respuesta del servidor, stack y causa del AggregateError.
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] font-bold text-rose-800 break-words">{createError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowErrorModal(false)}
+                className="rounded-lg bg-white p-1.5 text-stone-500 hover:text-stone-900 border border-stone-200 cursor-pointer"
+              >
+                <Icons.X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-stone-950 p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-emerald-100">
+                {createTechnical || "Sin detalles técnicos capturados."}
+              </pre>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 bg-white px-6 py-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                Tip: el campo adminPassword está enmascarado como ***
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (createTechnical) navigator.clipboard.writeText(createTechnical);
+                    showToast("Detalles copiados — pégalos a la IA.");
+                  }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-stone-200 bg-stone-900 px-4 text-xs font-bold text-white hover:bg-stone-800 cursor-pointer"
+                >
+                  <Icons.Copy className="h-4 w-4" />
+                  Copiar detalles
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowErrorModal(false)}
+                  className="h-8 rounded-xl border border-stone-200 bg-white px-4 text-xs font-bold text-stone-700 hover:bg-stone-50 cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SIMULATED EMAIL SENT NOTIFICATION OVERLAY */}
       {showEmailModal && emailDetails && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-950/40 backdrop-blur-md animate-in fade-in duration-300">
@@ -1568,6 +2130,42 @@ export default function SuperadminPage() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ACCESS QUICK MENU */}
+      {accessMenuOpen && (
+        <div 
+          className="fixed z-[200] bg-white border border-stone-200 shadow-2xl rounded-2xl p-1.5 w-48 animate-in zoom-in-95 duration-100"
+          style={{ top: accessMenuOpen.y, left: accessMenuOpen.x }}
+        >
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={() => {
+                const tenant = tenants.find(t => t.id === accessMenuOpen.tenantId);
+                if (tenant) handleAdminAccess(tenant);
+              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-100 transition-all cursor-pointer"
+            >
+              <Icons.ShieldCheck className="h-4 w-4 text-emerald-500" />
+              Acceder como Admin
+            </button>
+            <button
+              onClick={() => {
+                const tenant = tenants.find(t => t.id === accessMenuOpen.tenantId);
+                if (tenant) {
+                  setSelectedUserForAccess(tenant.users[0] || null);
+                  setSelectedTenant(tenant);
+                  handleOpenUsersModal(tenant);
+                }
+                setAccessMenuOpen(null);
+              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-stone-700 hover:bg-stone-100 transition-all cursor-pointer"
+            >
+              <Icons.Users className="h-4 w-4 text-blue-500" />
+              Escoger Usuario
+            </button>
           </div>
         </div>
       )}

@@ -88,6 +88,24 @@ else
 fi
 
 echo ""
+echo "── 4b. Verificando cliente Prisma (npx prisma generate) ─"
+
+if command -v npx >/dev/null 2>&1 && [ -f "prisma/schema.prisma" ]; then
+  if npx prisma generate --help >/dev/null 2>&1; then
+    if npx prisma generate >/dev/null 2>&1; then
+      ok "Prisma client generado correctamente"
+    else
+      fail "Fallo al generar Prisma client (npx prisma generate)"
+      EXIT_CODE=1
+    fi
+  else
+    warn "prisma no disponible, salto generate"
+  fi
+else
+  warn "prisma/schema.prisma no encontrado, salto generate"
+fi
+
+echo ""
 echo "── 5. Resumen ──────────────────────────────────────────"
 
 if [ $EXIT_CODE -eq 0 ]; then
