@@ -1,14 +1,15 @@
-import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
-import pg from "pg";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import db from "@/lib/db";
+import bcrypt from "bcryptjs";
 
 /**
- * TIPOS DE DESPLIEGUE
- * SaaS: Despliegue en el servidor del proveedor.
- * CLOUD_PRIVATE: Despliegue en la nube del cliente.
- * ON_PREMISE: Despliegue en el servidor local del cliente.
+ * TIPOS DE DESPLIEGUE — ARQUITECTURA SINGLE-DB (Vercel + Supabase)
+ *
+ * SAAS: Instancia lógica dentro de la DB única compartida (columna tenant_id + RLS).
+ *       ES EL ÚNICO MODO ACTIVO. Crear instancia = INSERT en `tenants` + seed con tenant_id.
+ *
+ * CLOUD_PRIVATE / ON_PREMISE: reservados para futuro multi-servidor físico.
+ *       Actualmente bloqueados — toda la plataforma corre en 1 proyecto Vercel + 1 Supabase.
  */
 export type DeploymentType = "SAAS" | "CLOUD_PRIVATE" | "ON_PREMISE";
 
@@ -27,17 +28,13 @@ export interface ProvisioningOptions {
 const DEFAULT_MODES = ["VENTAS", "COMUNICACION", "GESTION_PROYECTOS"];
 
 /**
- * ProvisioningService
- * 
- * Este servicio actúa como el orquestador de instancias de Palmera.
- * Su objetivo es abstraer la creación de la infraestructura necesaria para que una empresa 
- * pueda empezar a usar el sistema, independientemente de dónde se aloje la instancia.
+ * ProvisioningService — SINGLE DB
+ *
+ * Ya NO crea bases de datos físicas por tenant (desmontado según migracion-multitenant-erp.md).
+ * El aislamiento es por `tenant_id` + RLS en una única DB Supabase.
+ * Toda creación es un `INSERT` en la tabla `Tenant` del PrismaClient singleton.
  */
 export class ProvisioningService {
-  /**
-   * Orquestador principal de creación de instancia.
-   * Dependiendo del deploymentType, ejecutará una estrategia diferente.
-   */
   async provision(options: ProvisioningOptions) {
     const { deploymentType } = options;
 
@@ -45,8 +42,7 @@ export class ProvisioningService {
       case "SAAS":
         return await this.provisionSaaS(options);
       case "CLOUD_PRIVATE":
-        // TODO: Implementar conexión remota vía API/SSH para despliegue en nube cliente
-        throw new Error("Cloud Private provisioning is not yet implemented.");
+        throw new Error("CLOUD_PRIVATE no disponible: despliegue single-DB en Vercel/Supabase. Ver migracion-multitenant-erp.md");
       case "ON_PREMISE":
         return await this.generateOnPremiseKit(options);
       default:
@@ -55,46 +51,86 @@ export class ProvisioningService {
   }
 
   /**
-   * Estrategia SaaS:
-   * Crea la base de datos físicamente en el servidor del proveedor,
-   * ejecuta las migraciones y crea los datos iniciales.
+   * SAAS single-DB:
+   * Inserta Tenant + User admin + Settings usando el PrismaClient singleton (DATABASE_URL única).
+   * No crea BBDD física, no invoca prisma db push por tenant — las migraciones se ejecutan 1 sola vez sobre la DB única.
    */
   private async provisionSaaS(options: ProvisioningOptions) {
-    const adminDatabaseUrl = process.env.PALMERA_PLATFORM_DATABASE_URL || process.env.PLATFORM_DATABASE_URL;
-    if (!adminDatabaseUrl) {
-      throw new Error("PLATFORM_DATABASE_URL is not defined in environment variables.");
+    const slug = options.slug.trim().toLowerCase();
+    const existing = await db.tenant.findUnique({ where: { slug } });
+    if (existing) {
+      throw new Error(`Ya existe una instancia con slug "${slug}".`);
     }
 
-    const databaseName = `palmera_${options.slug.replace(/-/g, "_")}`;
-    const databaseUrl = this.buildDatabaseUrl(adminDatabaseUrl, databaseName);
+    const adminPassword = options.adminPassword || crypto.randomBytes(18).toString("base64url");
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
 
-    // 1. Crear la base de datos física
-    await this.ensureDatabase(adminDatabaseUrl, databaseName);
+    const tenant = await db.tenant.create({
+      data: {
+        slug,
+        name: options.name.trim(),
+        domain: options.domain?.trim() || `${slug}.palmera.io`,
+        isActive: true,
+      },
+    });
 
-    // 2. Ejecutar Prisma db push para crear el esquema
-    this.runPrismaDbPush(databaseUrl);
+    const user = await db.user.create({
+      data: {
+        tenantId: tenant.id,
+        name: options.adminName.trim(),
+        email: options.adminEmail.trim().toLowerCase(),
+        passwordHash,
+        role: "ADMIN",
+      },
+    });
 
-    // 3. Sembrar la instancia con datos iniciales (Tenant, Admin, Settings)
-    const seedResult = await this.seedInstance(databaseUrl, options);
+    const settings: [string, string][] = [
+      ["company_name", options.name.trim()],
+      ["company_email", options.adminEmail.trim().toLowerCase()],
+      ["company_timezone", options.timezone?.trim() || "Europe/Madrid"],
+      ["maintenance_mode", "false"],
+      ["palmera_active_modes", JSON.stringify(options.modes?.length ? options.modes : DEFAULT_MODES)],
+      ["data_transfer_policy", JSON.stringify({ default: "deny", requiresExplicitApiGrant: true })],
+    ];
+
+    for (const [key, value] of settings) {
+      await db.setting.upsert({
+        where: { tenantId_key: { tenantId: tenant.id, key } },
+        update: { value },
+        create: { tenantId: tenant.id, key, value },
+      });
+    }
+
+    await db.auditLog.create({
+      data: {
+        tenantId: tenant.id,
+        action: "INSTANCE_CREATED",
+        table: "Tenant",
+        recordId: tenant.id,
+        details: `Instancia '${tenant.name}' (${tenant.slug}) creada via superadmin (single-DB)`,
+        success: true,
+      },
+    });
 
     return {
       success: true,
-      databaseName,
-      databaseUrl,
-      ...seedResult,
-      deploymentType: "SAAS"
+      tenantId: tenant.id,
+      slug: tenant.slug,
+      databaseName: null as string | null, // single-DB: no DB por tenant
+      deploymentType: "SAAS" as const,
+      source: "database" as const,
+      generatedPassword: options.adminPassword ? undefined : adminPassword,
+      adminUserId: user.id,
     };
   }
 
   /**
-   * Estrategia On-Premise:
-   * No crea la base de datos (ya que el servidor es del cliente).
-   * Genera un "Kit de Instalación" que el cliente debe ejecutar en su local.
+   * ON_PREMISE: solo genera un kit de instrucciones; no provisiona infra local.
+   * Mantido para compatibilidad futura multi-servidor, pero no usado en single-DB.
    */
   private async generateOnPremiseKit(options: ProvisioningOptions) {
     const adminPassword = options.adminPassword || crypto.randomBytes(18).toString("base64url");
-    
-    // Generamos un objeto de configuración que el cliente usará en su .env local
+
     const kit = {
       env_vars: {
         PALMERA_INSTANCE_SLUG: options.slug,
@@ -106,108 +142,34 @@ export class ProvisioningService {
         PALMERA_INSTANCE_TIMEZONE: options.timezone || "Europe/Madrid",
         PALMERA_INSTANCE_MODES: (options.modes || DEFAULT_MODES).join(","),
       },
-      instructions: "Instalar Docker, copiar el archivo .env y ejecutar 'npm run instance:provision'",
+      note: "Modo ON_PREMISE es kit de instalación para servidor dedicado futuro. En arquitectura single-DB actual use deploymentType=SAAS",
+      instructions: "Instalar Docker, copiar el archivo .env y ejecutar 'npm run instance:provision' (legado, no necesario en Vercel/Supabase single-DB)",
       createdAt: new Date().toISOString(),
     };
 
     return {
       success: true,
       kit,
-      deploymentType: "ON_PREMISE"
+      deploymentType: "ON_PREMISE" as const,
     };
   }
 
-  // --- MÉTODOS PRIVADOS DE APOYO ---
-
-  private buildDatabaseUrl(adminUrl: string, dbName: string) {
-    const url = new URL(adminUrl);
-    url.pathname = `/${dbName}`;
-    return url.toString();
+  // --- Métodos legacy desmontados (kept as stubs for búsqueda grep, no usados) ---
+  /** @deprecated Single-DB: no se crea DATABASE por tenant */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private buildDatabaseUrl(_adminUrl: string, _dbName: string): string {
+    throw new Error("buildDatabaseUrl deshabilitado en arquitectura single-DB (ver migracion-multitenant-erp.md)");
   }
-
-  private async ensureDatabase(adminUrl: string, dbName: string) {
-    const pool = new pg.Pool({ connectionString: adminUrl });
-    try {
-      const exists = await pool.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
-      if (exists.rows.length === 0) {
-        // Importante: CREATE DATABASE no puede ejecutarse en una transacción
-        await pool.query(`CREATE DATABASE "${dbName.replace(/"/g, "")}"`);
-      }
-    } catch (err) {
-      // Preserve AggregateError inner details (pg throws AggregateError with .errors[] and empty .message)
-      const anyErr = err as any;
-      const inner = Array.isArray(anyErr?.errors)
-        ? anyErr.errors.map((e: any) => e?.message || String(e)).filter(Boolean).join(" | ")
-        : "";
-      const rawMsg = anyErr?.message || "";
-      const combined = [rawMsg, inner].filter(Boolean).join(inner && rawMsg ? ": " : "");
-      const fallbackMsg = combined || `${anyErr?.code || "AggregateError"} (Postgres no disponible en localhost:5432 - verifica que Postgres esté corriendo)`;
-      const wrapped = new Error(`ensureDatabase failed for "${dbName}": ${fallbackMsg}`);
-      (wrapped as any).cause = err;
-      (wrapped as any).errors = anyErr?.errors;
-      (wrapped as any).code = anyErr?.code || "ECONNREFUSED";
-      throw wrapped;
-    } finally {
-      await pool.end();
-    }
+  /** @deprecated Single-DB: no se crea DATABASE por tenant */
+  private async ensureDatabase(_adminUrl: string, _dbName: string): Promise<void> {
+    throw new Error("ensureDatabase deshabilitado en arquitectura single-DB");
   }
-
-  private runPrismaDbPush(databaseUrl: string) {
-    const result = spawnSync("npx", ["prisma", "db", "push"], {
-      cwd: process.cwd(),
-      env: { ...process.env, DATABASE_URL: databaseUrl },
-      encoding: "utf-8",
-    });
-
-    if (result.status !== 0) {
-      const stdout = (result.stdout as string) || "";
-      const stderr = (result.stderr as string) || "";
-      const out = [stdout, stderr].filter(Boolean).join("\n").slice(0, 4000);
-      throw new Error(`Prisma db push failed during provisioning (exit ${result.status}).\n${out}`);
-    }
+  /** @deprecated Single-DB: migraciones se ejecutan 1 vez sobre DB única */
+  private runPrismaDbPush(_databaseUrl: string): void {
+    throw new Error("runPrismaDbPush deshabilitado en arquitectura single-DB — ejecute `npx prisma migrate deploy` una vez sobre DATABASE_URL");
   }
-
-  private async seedInstance(databaseUrl: string, options: ProvisioningOptions) {
-    const pool = new pg.Pool({ connectionString: databaseUrl });
-    const adapter = new PrismaPg(pool);
-    const prisma = new PrismaClient({ adapter });
-
-    try {
-      const bcrypt = await import("bcryptjs");
-      const passwordHash = await bcrypt.hash(options.adminPassword || crypto.randomBytes(18).toString("base64url"), 10);
-
-      const tenant = await prisma.tenant.upsert({
-        where: { slug: options.slug },
-        update: { name: options.name, domain: options.domain },
-        create: { slug: options.slug, name: options.name, domain: options.domain, isActive: true },
-      });
-
-      await prisma.user.upsert({
-        where: { tenantId_email: { tenantId: tenant.id, email: options.adminEmail } },
-        update: { name: options.adminName, passwordHash },
-        create: { tenantId: tenant.id, name: options.adminName, email: options.adminEmail, passwordHash, role: "ADMIN" },
-      });
-
-      const settings = [
-        ["company_name", options.name],
-        ["company_email", options.adminEmail],
-        ["company_timezone", options.timezone || "Europe/Madrid"],
-        ["maintenance_mode", "false"],
-        ["palmera_active_modes", JSON.stringify(options.modes || DEFAULT_MODES)],
-      ];
-
-      for (const [key, value] of settings) {
-        await prisma.setting.upsert({
-          where: { tenantId_key: { tenantId: tenant.id, key } },
-          update: { value },
-          create: { tenantId: tenant.id, key, value },
-        });
-      }
-
-      return { tenantId: tenant.id };
-    } finally {
-      await prisma.$disconnect();
-      await pool.end();
-    }
+  /** @deprecated Reemplazado por provisionSaaS single-DB */
+  private async seedInstance(): Promise<unknown> {
+    throw new Error("seedInstance deshabilitado — provisionSaaS crea directamente Tenant/User/Settings");
   }
 }
