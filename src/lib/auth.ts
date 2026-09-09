@@ -17,10 +17,9 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials, req) {
         if (!credentials) return null;
 
-        // --- Superadmin Bypass Logic ---
+        // --- Superadmin Bypass Logic (token efímero de 60s) ---
         if (credentials.bypassToken && credentials.userId && credentials.tenantSlug) {
           try {
-            console.log("[Auth Bypass] Attempting bypass for slug:", credentials.tenantSlug);
             const tenant = await db.tenant.findUnique({
               where: { slug: credentials.tenantSlug },
             });
@@ -30,18 +29,12 @@ export const authOptions: NextAuthOptions = {
                 where: { tenantId_key: { tenantId: tenant.id, key: "superadmin_access_token" } },
               });
 
-              console.log("[Auth Bypass] Comparing tokens:", {
-                provided: credentials.bypassToken,
-                stored: tokenSetting?.value
-              });
-
               if (tokenSetting && tokenSetting.value === credentials.bypassToken) {
                 const user = await db.user.findUnique({
                   where: { id: credentials.userId },
                 });
 
                 if (user) {
-                  console.log("[Auth Bypass] Success! Access granted to:", user.email);
                   return {
                     id: user.id,
                     name: user.name,
@@ -51,17 +44,10 @@ export const authOptions: NextAuthOptions = {
                     tenantSlug: tenant.slug,
                   };
                 }
-              } else {
-                console.warn("[Auth Bypass] Token mismatch or not found", {
-                  received: credentials.bypassToken,
-                  stored: tokenSetting?.value
-                });
               }
-            } else {
-              console.warn("[Auth Bypass] Tenant not found for slug:", credentials.tenantSlug);
             }
           } catch (error) {
-            console.error("[Auth Bypass] Fatal error during bypass:", error);
+            console.error("[Auth Bypass] error:", (error as Error).message);
           }
         }
 
@@ -112,10 +98,10 @@ export const authOptions: NextAuthOptions = {
             tenantSlug: tenant.slug,
           };
         } catch (error) {
-          console.warn("Database connection failed in NextAuth authorize, falling back to mock database file:", error);
-          
+          console.warn("Database connection failed in NextAuth authorize, falling back to mock database:", (error as Error).message);
+
           try {
-            const { getMockTenants } = require("./mockDb");
+            const { getMockTenants } = await import("./mockDb");
             const tenants = getMockTenants();
             
             const tenantSlug = credentials.tenantSlug.toLowerCase();

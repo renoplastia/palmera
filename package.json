@@ -4,13 +4,18 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy",
     "instance:provision": "node scripts/provision-instance.mjs",
     "test": "vitest --environment jsdom --run"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
