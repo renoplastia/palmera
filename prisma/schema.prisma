@@ -25,6 +25,8 @@ model Tenant {
   passwordResetTokens PasswordResetToken[]
   artworks            Artwork[]
   consignments        Consignment[]
+  shops               Shop[]
+  coreProducts        CoreProduct[]
 }
 
 model User {
@@ -295,3 +297,205 @@ enum DataTransferDirection {
   OUTBOUND
   BIDIRECTIONAL
 }
+
+// ==========================================
+// CORE PRODUCT CATALOG & BOM (ODOO 19 STYLE)
+// ==========================================
+
+model CoreProduct {
+  id            String          @id @default(cuid())
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code          String?         // SKU / Código de barras
+  name          String
+  description   String?
+  productType   ProductType     @default(STORABLE)
+  price         Decimal         @default(0.00) @db.Decimal(10, 2)
+  cost          Decimal         @default(0.00) @db.Decimal(10, 2)
+  uom           String          @default("ud") // Unidad de medida (kg, g, l, ml, ud)
+  isSellable    Boolean         @default(true)
+  isPurchasable Boolean         @default(true)
+  isComponent   Boolean         @default(false)
+  image         String?
+
+  // Relaciones BOM (Ingredientes / Receta)
+  bomLinesAsParent     BomLine[] @relation("ParentProduct")
+  bomLinesAsIngredient BomLine[] @relation("IngredientProduct")
+
+  // Relación con E-Commerce
+  shopProducts         Product[]
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, productType])
+  @@index([tenantId, isSellable])
+  @@index([tenantId, isComponent])
+}
+
+model BomLine {
+  id           String      @id @default(cuid())
+  parentId     String
+  parent       CoreProduct @relation("ParentProduct", fields: [parentId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   CoreProduct @relation("IngredientProduct", fields: [ingredientId], references: [id])
+  quantity     Float
+  uom          String      @default("kg")
+  notes        String?
+
+  createdAt    DateTime    @default(now())
+
+  @@index([parentId])
+  @@index([ingredientId])
+}
+
+enum ProductType {
+  STORABLE
+  CONSUMABLE
+  SERVICE
+  MANUFACTURED_KIT
+}
+
+// ==========================================
+// E-COMMERCE & WEB BUILDER MODELS
+// ==========================================
+
+model Shop {
+  id                   String            @id @default(cuid())
+  tenantId             String
+  tenant               Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  slug                 String            @unique
+  name                 String
+  description          String?
+  logo                 String?
+  coverImage           String?
+  mode                 ShopMode          @default(MINIMAL)
+  templateId           String            @default("obrador-tradicional")
+  theme                Json?
+  customHtml           String?           @db.Text
+  customCss            String?           @db.Text
+  customDomain         String?           @unique
+  domainStatus         DomainStatus      @default(PENDING)
+  domainVerifyToken    String?
+  isActive             Boolean           @default(true)
+  businessContext      String?           @db.Text
+
+  products             Product[]
+  pickupPoints         PickupPoint[]
+  orders               Order[]
+  aiSessions           ShopAISession[]
+
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([tenantId])
+  @@index([customDomain])
+}
+
+model Product {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  coreProductId String?
+  coreProduct   CoreProduct? @relation(fields: [coreProductId], references: [id], onDelete: SetNull)
+  name          String
+  description   String?
+  price         Decimal      @db.Decimal(8, 2)
+  image         String?
+  maxDaily      Int          @default(50)
+  currentStock  Int          @default(50)
+  isActive      Boolean      @default(true)
+  sortOrder     Int          @default(0)
+
+  orderLines    OrderLine[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([shopId])
+  @@index([shopId, isActive])
+  @@index([coreProductId])
+}
+
+model PickupPoint {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  schedule  String?
+  isActive  Boolean  @default(true)
+
+  orders    Order[]
+
+  createdAt DateTime @default(now())
+
+  @@index([shopId])
+}
+
+model Order {
+  id            String       @id @default(cuid())
+  shopId        String
+  shop          Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  pickupPointId String?
+  pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id])
+  customerName  String
+  customerPhone String?
+  status        OrderStatus  @default(PENDING)
+  notes         String?
+  totalAmount   Decimal      @db.Decimal(10, 2)
+
+  lines         OrderLine[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([shopId, createdAt])
+  @@index([shopId, status])
+}
+
+model OrderLine {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @db.Decimal(8, 2)
+
+  @@index([orderId])
+}
+
+model ShopAISession {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  messages  Json
+  snapshot  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+}
+
+enum ShopMode {
+  MINIMAL
+  CUSTOM
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum DomainStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+

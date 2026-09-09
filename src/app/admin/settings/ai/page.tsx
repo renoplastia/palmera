@@ -143,7 +143,7 @@ export default function AISettingsPage() {
             Proveedor de IA
           </span>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             {/* OpenRouter */}
             <button
               type="button"
@@ -159,7 +159,64 @@ export default function AISettingsPage() {
                 <span className="text-sm font-bold text-foreground">OpenRouter</span>
               </div>
               <p className="text-[10px] text-muted-foreground">
-                Modelos gratuitos en la nube. Requiere API key.
+                Gateway multi-modelo.
+              </p>
+            </button>
+
+            {/* Anthropic */}
+            <button
+              type="button"
+              onClick={() => setConfig({ ...config, provider: "anthropic", model: "claude-3-5-sonnet-20241022" })}
+              className={`flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                config.provider === "anthropic"
+                  ? "border-amber-500 bg-amber-500/5"
+                  : "border-border/40 bg-background hover:border-border"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Icons.Sparkles className={`h-5 w-5 ${config.provider === "anthropic" ? "text-amber-500" : "text-muted-foreground"}`} />
+                <span className="text-sm font-bold text-foreground">Anthropic</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Claude 3.5 Sonnet / Opus.
+              </p>
+            </button>
+
+            {/* OpenAI */}
+            <button
+              type="button"
+              onClick={() => setConfig({ ...config, provider: "openai", model: "gpt-4o" })}
+              className={`flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                config.provider === "openai"
+                  ? "border-amber-500 bg-amber-500/5"
+                  : "border-border/40 bg-background hover:border-border"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Icons.Bot className={`h-5 w-5 ${config.provider === "openai" ? "text-amber-500" : "text-muted-foreground"}`} />
+                <span className="text-sm font-bold text-foreground">OpenAI</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                GPT-4o / GPT-4o-mini.
+              </p>
+            </button>
+
+            {/* Nvidia */}
+            <button
+              type="button"
+              onClick={() => setConfig({ ...config, provider: "nvidia", model: "meta/llama-3.1-70b-instruct" })}
+              className={`flex flex-col items-start gap-3 p-4 rounded-xl border-2 transition-all text-left ${
+                config.provider === "nvidia"
+                  ? "border-amber-500 bg-amber-500/5"
+                  : "border-border/40 bg-background hover:border-border"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Icons.Cpu className={`h-5 w-5 ${config.provider === "nvidia" ? "text-amber-500" : "text-muted-foreground"}`} />
+                <span className="text-sm font-bold text-foreground">Nvidia NIM</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Llama 3.1 / Nemotron.
               </p>
             </button>
 
@@ -178,22 +235,22 @@ export default function AISettingsPage() {
                 <span className="text-sm font-bold text-foreground">Ollama</span>
               </div>
               <p className="text-[10px] text-muted-foreground">
-                Modelos locales sin coste. Requiere Ollama instalado.
+                Modelos locales sin coste.
               </p>
             </button>
           </div>
 
           {/* Provider-specific settings */}
-          {config.provider === "openrouter" && (
+          {(config.provider === "openrouter" || config.provider === "anthropic" || config.provider === "openai" || config.provider === "nvidia") && (
             <div className="space-y-4 pt-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground uppercase">API Key de OpenRouter</label>
+                <label className="text-xs font-bold text-muted-foreground uppercase">API Key de {config.provider.toUpperCase()}</label>
                 <div className="relative">
                   <input
                     type={showApiKey ? "text" : "password"}
                     value={config.apiKey}
                     onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                    placeholder="sk-or-v1-..."
+                    placeholder={`sk-${config.provider}-...`}
                     className="w-full rounded-lg border border-border/50 bg-background py-2 px-3 pr-10 text-xs text-foreground outline-hidden focus:border-amber-500 font-mono"
                   />
                   <button
@@ -204,9 +261,6 @@ export default function AISettingsPage() {
                     {showApiKey ? <Icons.EyeOff className="h-4 w-4" /> : <Icons.Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Obtén tu API key en <a href="https://openrouter.ai" target="_blank" className="text-amber-500 hover:underline">openrouter.ai</a>
-                </p>
               </div>
             </div>
           )}
@@ -222,9 +276,6 @@ export default function AISettingsPage() {
                   placeholder="http://localhost:11434"
                   className="w-full rounded-lg border border-border/50 bg-background py-2 px-3 text-xs text-foreground outline-hidden focus:border-amber-500 font-mono"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  Instala Ollama en <a href="https://ollama.ai" target="_blank" className="text-amber-500 hover:underline">ollama.ai</a> y ejecuta <code className="bg-muted px-1 rounded">ollama pull llama3</code>
-                </p>
               </div>
             </div>
           )}

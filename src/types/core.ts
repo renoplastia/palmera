@@ -47,7 +47,7 @@ export interface DailyScrumSession {
   status: "in_progress" | "completed";
 }
 
-export type AIProvider = "openrouter" | "ollama" | "none";
+export type AIProvider = "openrouter" | "ollama" | "anthropic" | "openai" | "nvidia" | "none";
 
 export interface AIConfig {
   provider: AIProvider;

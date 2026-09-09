@@ -20,6 +20,8 @@ export const metadata: Metadata = {
 };
 
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { GlobalErrorProvider } from "@/components/GlobalErrorPopup";
+import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 
 export default function RootLayout({
   children,
@@ -32,7 +34,11 @@ export default function RootLayout({
       className={`${outfit.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <GlobalErrorBoundary>
+            <GlobalErrorProvider>{children}</GlobalErrorProvider>
+          </GlobalErrorBoundary>
+        </SessionProvider>
       </body>
     </html>
   );

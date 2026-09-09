@@ -59,6 +59,33 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, models });
     }
 
+    if (provider === "anthropic") {
+      const models = [
+        { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", description: "El modelo más inteligente y rápido de Anthropic", contextLength: 200000, isFree: false },
+        { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", description: "Ultra rápido para respuestas concisas", contextLength: 200000, isFree: false },
+        { id: "claude-3-opus-20240229", name: "Claude 3 Opus", description: "Razonamiento profundo e instrucciones complejas", contextLength: 200000, isFree: false },
+      ];
+      return NextResponse.json({ success: true, models });
+    }
+
+    if (provider === "openai") {
+      const models = [
+        { id: "gpt-4o", name: "GPT-4o", description: "Flagship omni model de OpenAI", contextLength: 128000, isFree: false },
+        { id: "gpt-4o-mini", name: "GPT-4o mini", description: "Rápido y económico para tareas frecuentes", contextLength: 128000, isFree: false },
+        { id: "o3-mini", name: "o3-mini", description: "Razonamiento científico y técnico rápido", contextLength: 200000, isFree: false },
+      ];
+      return NextResponse.json({ success: true, models });
+    }
+
+    if (provider === "nvidia") {
+      const models = [
+        { id: "meta/llama-3.1-70b-instruct", name: "Llama 3.1 70B Instruct (Nvidia NIM)", description: "Procesamiento de lenguaje acelerado", contextLength: 128000, isFree: false },
+        { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct (Nvidia NIM)", description: "Modelo insignia Llama 3.3", contextLength: 128000, isFree: false },
+        { id: "nvidia/llama-3.1-nemotron-70b-instruct", name: "Nemotron 70B Instruct", description: "Optimizado por Nvidia", contextLength: 128000, isFree: false },
+      ];
+      return NextResponse.json({ success: true, models });
+    }
+
     return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json(
