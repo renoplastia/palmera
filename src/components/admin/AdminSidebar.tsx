@@ -7,6 +7,7 @@ import * as Icons from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { coreModules, PalmModesRegistry } from "@/modules/registry";
 import EditableLabel from "./EditableLabel";
+import { getTenantStorageKey } from "@/lib/clientStorage";
 
 // Dynamic Icon resolver for Lucide icons
 export const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
@@ -45,7 +46,6 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
 
   // Load active modes from localStorage (syncing with Settings page)
   useEffect(() => {
-    const { getTenantStorageKey } = require("@/lib/clientStorage");
     const key = getTenantStorageKey("palmera_active_modes");
     const saved = localStorage.getItem(key);
     if (saved) {
@@ -64,7 +64,6 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   // Listen to custom local storage changes to keep sidebar reactive
   useEffect(() => {
     const handleStorageChange = () => {
-      const { getTenantStorageKey } = require("@/lib/clientStorage");
       const key = getTenantStorageKey("palmera_active_modes");
       const saved = localStorage.getItem(key);
       if (saved) {

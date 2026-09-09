@@ -14,6 +14,12 @@ const prismaClientSingleton = () => {
 
   const pool = new pg.Pool({
     connectionString: connectionString || "postgresql://placeholder:placeholder@localhost:5432/placeholder",
+    // Serverless (Vercel) optimizado para Supabase pooler transaction mode
+    max: 1,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
+    // Supabase pooler requiere SSL
+    ssl: connectionString?.includes("supabase.co") ? { rejectUnauthorized: false } : undefined,
   });
 
   const adapter = new PrismaPg(pool);

@@ -137,11 +137,11 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/admin/:path*",
-    "/superadmin/:path*",
-    "/superadmin",
-    "/login",
-    "/register",
-    "/tenant-not-found",
+    /*
+     * Match all routes except static assets and Next internals.
+     * Necesario para inyectar x-tenant-slug globalmente (wildcard subdominio Vercel).
+     * Middleware sigue permitiendo rutas plataforma sin validación DB; solo protege /admin y /superadmin.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
   ],
 };

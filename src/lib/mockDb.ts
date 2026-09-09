@@ -61,28 +61,43 @@ const DEFAULT_TENANTS: MockTenant[] = [
   },
 ];
 
+// En Vercel el filesystem es read-only (excepto /tmp) — no intentar escribir mock_db.json en producción
+const IS_VERCEL = !!process.env.VERCEL;
+let memoryTenants: MockTenant[] | null = null;
+
 export function getMockTenants(): MockTenant[] {
+  if (IS_VERCEL && memoryTenants) return memoryTenants;
   try {
     if (fs.existsSync(MOCK_DB_PATH)) {
       const fileData = fs.readFileSync(MOCK_DB_PATH, "utf-8");
-      return JSON.parse(fileData);
+      const parsed = JSON.parse(fileData) as MockTenant[];
+      if (IS_VERCEL) memoryTenants = parsed;
+      return parsed;
     }
   } catch (error) {
     console.error("Failed to read mock database file, using defaults:", error);
   }
 
   // If file doesn't exist or failed to load, write default and return
-  try {
-    fs.mkdirSync(path.dirname(MOCK_DB_PATH), { recursive: true });
-    fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(DEFAULT_TENANTS, null, 2), "utf-8");
-  } catch (error) {
-    console.error("Failed to write default mock database file:", error);
+  if (!IS_VERCEL) {
+    try {
+      fs.mkdirSync(path.dirname(MOCK_DB_PATH), { recursive: true });
+      fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(DEFAULT_TENANTS, null, 2), "utf-8");
+    } catch (error) {
+      console.error("Failed to write default mock database file:", error);
+    }
+  } else {
+    memoryTenants = DEFAULT_TENANTS;
   }
 
   return DEFAULT_TENANTS;
 }
 
 export function saveMockTenants(tenants: MockTenant[]): boolean {
+  if (IS_VERCEL) {
+    memoryTenants = tenants;
+    return true;
+  }
   try {
     fs.mkdirSync(path.dirname(MOCK_DB_PATH), { recursive: true });
     fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(tenants, null, 2), "utf-8");
